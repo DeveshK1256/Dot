@@ -12,6 +12,13 @@ const scheduler = new DeadlineScheduler(storage, windowManager);
 
 let tray = null;
 
+process.on('uncaughtException', (err) => {
+  console.error('[MAIN UNCAUGHT EXCEPTION]', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[MAIN UNHANDLED REJECTION]', reason);
+});
+
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -66,77 +73,172 @@ if (!gotTheLock) {
     // Create persistent "+" button window
     windowManager.createPlusButtonWindow();
 
-    // Setup IPC Handlers
+    // Setup IPC Handlers with robust try/catch wrapping
     ipcMain.on('set-dot-state', (_event, { dotId, state }) => {
-      windowManager.setDotState(dotId, state);
+      try {
+        windowManager.setDotState(dotId, state);
+      } catch (err) {
+        console.error('[IPC ERROR set-dot-state]:', err);
+      }
     });
 
     ipcMain.on('close-dot-window', (_event, dotId) => {
-      windowManager.closeDotWindow(dotId);
+      try {
+        windowManager.closeDotWindow(dotId);
+      } catch (err) {
+        console.error('[IPC ERROR close-dot-window]:', err);
+      }
     });
 
     ipcMain.on('hide-dot-window', (_event, dotId) => {
-      windowManager.hideDotWindow(dotId);
+      try {
+        windowManager.hideDotWindow(dotId);
+      } catch (err) {
+        console.error('[IPC ERROR hide-dot-window]:', err);
+      }
     });
 
     ipcMain.on('spawn-dot-from-plus-button', () => {
-      windowManager.spawnDotFromPlusButton();
+      try {
+        windowManager.spawnDotFromPlusButton();
+      } catch (err) {
+        console.error('[IPC ERROR spawn-dot-from-plus-button]:', err);
+      }
     });
 
     ipcMain.on('bring-dot-to-front', (_event, dotId) => {
-      windowManager.bringDotToFront(dotId);
+      try {
+        console.log(`[IPC bring-dot-to-front] Opening dot: ${dotId}`);
+        windowManager.bringDotToFront(dotId);
+      } catch (err) {
+        console.error(`[IPC ERROR bring-dot-to-front ${dotId}]:`, err);
+      }
     });
 
     ipcMain.on('set-cluster-state', (_e, { clusterId, state }) => {
-      windowManager.setClusterState(clusterId, state);
+      try {
+        windowManager.setClusterState(clusterId, state);
+      } catch (err) {
+        console.error('[IPC ERROR set-cluster-state]:', err);
+      }
     });
 
     ipcMain.handle('get-cluster-data', (_e, clusterId) => {
-      return windowManager.getClusterData(clusterId);
+      try {
+        return windowManager.getClusterData(clusterId);
+      } catch (err) {
+        console.error('[IPC ERROR get-cluster-data]:', err);
+        return null;
+      }
     });
 
     ipcMain.on('uncluster', (_e, clusterId) => {
-      windowManager.uncluster(clusterId);
+      try {
+        windowManager.uncluster(clusterId);
+      } catch (err) {
+        console.error('[IPC ERROR uncluster]:', err);
+      }
     });
 
-    ipcMain.handle('storage:getSettings', () => storage.getSettings());
+    ipcMain.handle('storage:getSettings', () => {
+      try {
+        return storage.getSettings();
+      } catch (err) {
+        console.error('[IPC ERROR storage:getSettings]:', err);
+        return {};
+      }
+    });
+
     ipcMain.handle('storage:saveSettings', (_e, s) => {
-      const saved = storage.saveSettings(s);
-      windowManager.broadcast('settings-updated', saved);
-      windowManager.updatePlusButtonWindow(saved);
-      if (s.displayMode !== undefined) {
-        windowManager.applyDisplayMode(s.displayMode);
-        if (tray && tray.updateDisplayMode) {
-          tray.updateDisplayMode();
+      try {
+        const saved = storage.saveSettings(s);
+        windowManager.broadcast('settings-updated', saved);
+        windowManager.updatePlusButtonWindow(saved);
+        if (s.displayMode !== undefined) {
+          windowManager.applyDisplayMode(s.displayMode);
+          if (tray && tray.updateDisplayMode) {
+            tray.updateDisplayMode();
+          }
         }
+        return saved;
+      } catch (err) {
+        console.error('[IPC ERROR storage:saveSettings]:', err);
+        return s;
       }
-      return saved;
     });
-    ipcMain.handle('storage:getDots', () => storage.getDots());
+
+    ipcMain.handle('storage:getDots', () => {
+      try {
+        return storage.getDots();
+      } catch (err) {
+        console.error('[IPC ERROR storage:getDots]:', err);
+        return [];
+      }
+    });
+
     ipcMain.handle('storage:saveDot', (_e, d) => {
-      const saved = storage.saveDot(d);
-      windowManager.broadcast('dot-updated', saved);
-      if (saved.isHub || saved.id === windowManager.hubDotId) {
-        windowManager.updateHubPosition(saved);
+      try {
+        const saved = storage.saveDot(d);
+        windowManager.broadcast('dot-updated', saved);
+        if (saved.isHub || saved.id === windowManager.hubDotId) {
+          windowManager.updateHubPosition(saved);
+        }
+        return saved;
+      } catch (err) {
+        console.error('[IPC ERROR storage:saveDot]:', err);
+        return d;
       }
-      return saved;
     });
+
     ipcMain.handle('storage:deleteDot', (_e, { dotId, deleteNotes }) => {
-      const deleted = storage.deleteDot(dotId, deleteNotes);
-      windowManager.broadcast('dot-deleted', dotId);
-      return deleted;
+      try {
+        const deleted = storage.deleteDot(dotId, deleteNotes);
+        windowManager.broadcast('dot-deleted', dotId);
+        return deleted;
+      } catch (err) {
+        console.error('[IPC ERROR storage:deleteDot]:', err);
+        return false;
+      }
     });
-    ipcMain.handle('storage:getNotesByDot', (_e, dotId) => storage.getNotesByDot(dotId));
-    ipcMain.handle('storage:getAllNotes', () => storage.getAllNotes());
+
+    ipcMain.handle('storage:getNotesByDot', (_e, dotId) => {
+      try {
+        return storage.getNotesByDot(dotId);
+      } catch (err) {
+        console.error('[IPC ERROR storage:getNotesByDot]:', err);
+        return [];
+      }
+    });
+
+    ipcMain.handle('storage:getAllNotes', () => {
+      try {
+        return storage.getAllNotes();
+      } catch (err) {
+        console.error('[IPC ERROR storage:getAllNotes]:', err);
+        return [];
+      }
+    });
+
     ipcMain.handle('storage:saveNote', (_e, n) => {
-      const saved = storage.saveNote(n);
-      windowManager.broadcast('note-updated', saved);
-      return saved;
+      try {
+        const saved = storage.saveNote(n);
+        windowManager.broadcast('note-updated', saved);
+        return saved;
+      } catch (err) {
+        console.error('[IPC ERROR storage:saveNote]:', err);
+        return n;
+      }
     });
+
     ipcMain.handle('storage:deleteNote', (_e, noteId) => {
-      const deleted = storage.deleteNote(noteId);
-      windowManager.broadcast('note-deleted', noteId);
-      return deleted;
+      try {
+        const deleted = storage.deleteNote(noteId);
+        windowManager.broadcast('note-deleted', noteId);
+        return deleted;
+      } catch (err) {
+        console.error('[IPC ERROR storage:deleteNote]:', err);
+        return false;
+      }
     });
   });
 

@@ -139,12 +139,15 @@ export class WindowManager {
   createDotWindow(dot) {
     if (this.windows.has(dot.id)) {
       const existing = this.windows.get(dot.id);
-      const settings = this.storage.getSettings();
-      if (settings.displayMode !== 'hubOnly' || dot.id === this.hubDotId || dot.isHub) {
-        existing.show();
-        existing.focus();
+      if (existing && !existing.isDestroyed()) {
+        const settings = this.storage.getSettings();
+        if (settings.displayMode !== 'hubOnly' || dot.id === this.hubDotId || dot.isHub) {
+          existing.show();
+          existing.focus();
+        }
+        return existing;
       }
-      return existing;
+      this.windows.delete(dot.id);
     }
 
     const settings = this.storage.getSettings();
@@ -153,8 +156,8 @@ export class WindowManager {
     const shouldShow = isHub || !isHubOnly;
 
     let initBounds = {
-      x: dot.position.x,
-      y: dot.position.y,
+      x: dot.position?.x ?? 100,
+      y: dot.position?.y ?? 100,
       width: 48,
       height: 48
     };
@@ -181,6 +184,15 @@ export class WindowManager {
         nodeIntegration: false
       }
     });
+
+    if (win.webContents && typeof win.webContents.on === 'function') {
+      win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+        console.log(`[RENDERER ${dot.id} L${level}] ${message} (${sourceId}:${line})`);
+      });
+      win.webContents.on('render-process-gone', (_e, details) => {
+        console.error(`[RENDER-PROCESS-GONE ${dot.id}]`, details);
+      });
+    }
 
     // In dev mode load vite server or file in production
     const devUrl = 'http://localhost:5173';
@@ -471,25 +483,111 @@ export class WindowManager {
   }
 
   bringDotToFront(dotId) {
-    let win = this.windows.get(dotId);
-    if (!win || win.isDestroyed()) {
-      const dot = this.storage.getDot(dotId);
-      if (dot) {
-        win = this.createDotWindow(dot);
+    try {
+      // 1. If dot is currently part of an active cluster, handle via openDotFromCluster
+      if (this.clusteredDotIds.has(dotId)) {
+        this.openDotFromCluster(dotId);
+        return;
       }
-    }
-    if (win && !win.isDestroyed()) {
-      win.show();
-      win.focus();
-      this.setDotState(dotId, 'EXPANDED');
-      win.webContents.send('focus-input');
 
-      // Collapse cluster window if open
-      for (const [cId, c] of this.clusters) {
-        if (c.dotIds.includes(dotId)) {
-          this.setClusterState(cId, 'COLLAPSED');
+      // 2. Normal or Hidden (Hide to Tray): retrieve or recreate window
+      let win = this.windows.get(dotId);
+      if (!win || win.isDestroyed()) {
+        const dot = this.storage.getDot(dotId);
+        if (dot) {
+          win = this.createDotWindow(dot);
+        } else {
+          console.warn(`[WindowManager] Dot ${dotId} not found in storage`);
+          return;
         }
       }
+
+      if (win && !win.isDestroyed()) {
+        win.show();
+        win.focus();
+        this.setDotState(dotId, 'EXPANDED');
+        if (win.webContents && !win.webContents.isDestroyed()) {
+          win.webContents.send('focus-input');
+        }
+      }
+    } catch (err) {
+      console.error(`[WindowManager] Error bringing dot ${dotId} to front:`, err);
+    }
+  }
+
+  openDotFromCluster(dotId) {
+    try {
+      const activeCluster = Array.from(this.clusters.values()).find((c) =>
+        c.dotIds.includes(dotId)
+      );
+
+      // Remove from clustered set
+      this.clusteredDotIds.delete(dotId);
+
+      // Get or create window for the dot being opened
+      let win = this.windows.get(dotId);
+      const dot = this.storage.getDot(dotId);
+      if (!win || win.isDestroyed()) {
+        if (dot) {
+          win = this.createDotWindow(dot);
+        }
+      }
+
+      if (activeCluster) {
+        const remainingDotIds = activeCluster.dotIds.filter((id) => id !== dotId);
+
+        if (remainingDotIds.length < 2) {
+          // Cluster dissolves completely
+          const otherDotId = remainingDotIds[0];
+          if (otherDotId) {
+            this.clusteredDotIds.delete(otherDotId);
+            const otherWin = this.windows.get(otherDotId);
+            if (otherWin && !otherWin.isDestroyed()) {
+              otherWin.show();
+            }
+          }
+
+          // Destroy cluster window
+          const clusterWin = this.clusterWindows.get(activeCluster.clusterId);
+          if (clusterWin && !clusterWin.isDestroyed()) {
+            clusterWin.destroy();
+          }
+          this.clusterWindows.delete(activeCluster.clusterId);
+          this.clusters.delete(activeCluster.clusterId);
+        } else {
+          // Shrink cluster
+          activeCluster.dotIds = remainingDotIds;
+          activeCluster.count = remainingDotIds.length;
+          const clusterWin = this.clusterWindows.get(activeCluster.clusterId);
+          if (clusterWin && !clusterWin.isDestroyed()) {
+            clusterWin.webContents.send('cluster-data-updated', activeCluster);
+          }
+        }
+
+        // Offset the opened dot slightly away from centroid so it doesn't immediately re-cluster
+        if (dot && win && !win.isDestroyed()) {
+          const primaryDisplay = screen.getPrimaryDisplay();
+          const { width, height } = primaryDisplay.workArea;
+          const newX = Math.max(20, Math.min(width - 360, (activeCluster.centroid?.x || dot.position?.x || 100) + 60));
+          const newY = Math.max(20, Math.min(height - 280, (activeCluster.centroid?.y || dot.position?.y || 100) + 10));
+          dot.position = { x: newX, y: newY };
+          this.storage.saveDot(dot);
+          win.setPosition(newX, newY);
+        }
+      }
+
+      if (win && !win.isDestroyed()) {
+        win.show();
+        win.focus();
+        this.setDotState(dotId, 'EXPANDED');
+        if (win.webContents && !win.webContents.isDestroyed()) {
+          win.webContents.send('focus-input');
+        }
+      }
+
+      this.updateClusters();
+    } catch (err) {
+      console.error(`[WindowManager] Error opening dot ${dotId} from cluster:`, err);
     }
   }
 
@@ -524,35 +622,39 @@ export class WindowManager {
   }
 
   setDotState(dotId, state) {
-    const win = this.windows.get(dotId);
-    if (!win || win.isDestroyed()) return;
+    try {
+      const win = this.windows.get(dotId);
+      if (!win || win.isDestroyed()) return;
 
-    const isHub = dotId === this.hubDotId;
-    const settings = this.storage.getSettings();
+      const isHub = dotId === this.hubDotId;
+      const settings = this.storage.getSettings();
 
-    if (isHub && settings.displayMode === 'hubOnly') {
-      const hubDot = this.storage.getDot(dotId);
-      const edge = hubDot?.hubEdge || 'right';
-      const newBounds = this.getHubEdgeBounds(edge, state === 'EXPANDED');
-      win.setBounds(newBounds);
-      return;
-    }
+      if (isHub && settings.displayMode === 'hubOnly') {
+        const hubDot = this.storage.getDot(dotId);
+        const edge = hubDot?.hubEdge || 'right';
+        const newBounds = this.getHubEdgeBounds(edge, state === 'EXPANDED');
+        win.setBounds(newBounds);
+        return;
+      }
 
-    const bounds = win.getBounds();
-    if (state === 'COLLAPSED') {
-      win.setBounds({
-        x: bounds.x,
-        y: bounds.y,
-        width: 48,
-        height: 48
-      });
-    } else if (state === 'EXPANDED') {
-      win.setBounds({
-        x: bounds.x,
-        y: bounds.y,
-        width: 340,
-        height: isHub ? 340 : 260
-      });
+      const bounds = win.getBounds();
+      if (state === 'COLLAPSED') {
+        win.setBounds({
+          x: bounds.x,
+          y: bounds.y,
+          width: 48,
+          height: 48
+        });
+      } else if (state === 'EXPANDED') {
+        win.setBounds({
+          x: bounds.x,
+          y: bounds.y,
+          width: 340,
+          height: isHub ? 340 : 260
+        });
+      }
+    } catch (err) {
+      console.error(`[WindowManager] Error in setDotState for ${dotId}:`, err);
     }
   }
 

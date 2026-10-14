@@ -14,7 +14,9 @@ vi.mock('electron', () => {
       this.events = {};
       this.webContents = {
         send: vi.fn(),
-        once: vi.fn((_evt, cb) => cb && cb())
+        once: vi.fn((_evt, cb) => cb && cb()),
+        on: vi.fn(),
+        isDestroyed: vi.fn(() => false)
       };
     }
     show() { this.visible = true; }
@@ -282,6 +284,104 @@ describe('Unique Features Unit Tests', () => {
 
       // Pending note stays in active storage
       expect(storage.getNote('note-pending')).toBeDefined();
+    });
+  });
+
+  describe('Hub Note Click & bringDotToFront Handling across states', () => {
+    it('restores and focuses a dot closed via "Hide to Tray" (Case A)', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const d1 = { id: 'dot-hidden-tray', position: { x: 150, y: 150 }, noteIds: [] };
+      storage.saveDot(d1);
+      const win = wm.createDotWindow(d1);
+      expect(win.visible).toBe(true);
+
+      // Dot is closed via "Hide to Tray"
+      wm.hideDotWindow('dot-hidden-tray');
+      expect(win.visible).toBe(false);
+
+      // User clicks note in hub list -> calls bringDotToFront
+      wm.bringDotToFront('dot-hidden-tray');
+
+      // Window must be re-shown, focused, and expanded
+      expect(win.visible).toBe(true);
+      expect(win.bounds.width).toBe(340);
+      expect(win.bounds.height).toBe(260);
+      expect(win.webContents.send).toHaveBeenCalledWith('focus-input');
+    });
+
+    it('opens a dot from an active cluster and un-clusters cleanly (Case B)', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const d1 = { id: 'dot-c1', position: { x: 100, y: 100 }, noteIds: [] };
+      const d2 = { id: 'dot-c2', position: { x: 105, y: 105 }, noteIds: [] }; // >50% overlap
+      storage.saveDot(d1);
+      storage.saveDot(d2);
+      const win1 = wm.createDotWindow(d1);
+      const win2 = wm.createDotWindow(d2);
+
+      // Trigger clustering
+      wm.handleDotMoved('dot-c1');
+      expect(win1.visible).toBe(false);
+      expect(win2.visible).toBe(false);
+      expect(wm.clusteredDotIds.has('dot-c1')).toBe(true);
+      expect(wm.clusteredDotIds.has('dot-c2')).toBe(true);
+      expect(wm.clusterWindows.size).toBe(1);
+
+      // User clicks dot-c1 in hub list -> calls bringDotToFront('dot-c1')
+      wm.bringDotToFront('dot-c1');
+
+      // dot-c1 should now be visible, expanded, and unclustered
+      expect(win1.visible).toBe(true);
+      expect(win1.bounds.width).toBe(340);
+      expect(wm.clusteredDotIds.has('dot-c1')).toBe(false);
+
+      // Since the cluster only had 2 dots, dissolving dot-c1 leaves dot-c2 free
+      expect(win2.visible).toBe(true);
+      expect(wm.clusteredDotIds.has('dot-c2')).toBe(false);
+      expect(wm.clusterWindows.size).toBe(0);
+    });
+
+    it('focuses and expands a normal visible dot without error (Case C)', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const d1 = { id: 'dot-normal', position: { x: 200, y: 200 }, noteIds: [] };
+      storage.saveDot(d1);
+      const win = wm.createDotWindow(d1);
+      expect(win.visible).toBe(true);
+
+      // User clicks note in hub list
+      wm.bringDotToFront('dot-normal');
+
+      expect(win.visible).toBe(true);
+      expect(win.bounds.width).toBe(340);
+      expect(win.webContents.send).toHaveBeenCalledWith('focus-input');
+    });
+
+    it('gracefully recreates a window if previously destroyed, and handles non-existent dot safely', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const d1 = { id: 'dot-recreate', position: { x: 300, y: 300 }, noteIds: [] };
+      storage.saveDot(d1);
+      const win = wm.createDotWindow(d1);
+      win.destroy();
+
+      // Window was destroyed, bringing to front recreates it safely
+      expect(() => wm.bringDotToFront('dot-recreate')).not.toThrow();
+      const newWin = wm.windows.get('dot-recreate');
+      expect(newWin.isDestroyed()).toBe(false);
+      expect(newWin.visible).toBe(true);
+
+      // Calling bringDotToFront with non-existent dotId logs warning and does NOT throw
+      expect(() => wm.bringDotToFront('non-existent-dot-id')).not.toThrow();
     });
   });
 });
