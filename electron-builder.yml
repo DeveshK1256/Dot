@@ -1,0 +1,35 @@
+appId: com.dot.app
+productName: Dot
+directories:
+  output: dist-package
+files:
+  - "dist/renderer/**/*"
+  - "src/main/**/*"
+  - "src/shared/**/*"
+  - "assets/icons/**/*"
+  - "package.json"
+
+mac:
+  category: public.app-category.productivity
+  icon: assets/icons/app/icon.icns
+  target:
+    - dmg
+
+linux:
+  category: Utility
+  icon: assets/icons/app/png
+  target:
+    - deb
+    - AppImage
+
+win:
+  icon: assets/icons/app/icon.ico
+  sign: null
+  target:
+    - dir
+    - nsis
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false

@@ -1,0 +1,282 @@
+:root {
+  --dot-bg: #3b82f6;
+  --dot-opacity: 0.88;
+  --dot-blur: 12px;
+  --dot-text-size: 14px;
+  --dot-text-color: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+body, html, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* App Wrapper */
+.app-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Collapsed Bubble */
+.dot-collapsed {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  -webkit-app-region: drag;
+}
+
+.dot-collapsed-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: var(--dot-bg);
+  opacity: var(--dot-opacity);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dot-collapsed:hover {
+  transform: scale(1.08);
+}
+
+/* Urgency Rings */
+.urgency-warning {
+  border: 2px solid #f59e0b;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+  animation: pulse-ring 2s infinite;
+}
+
+.urgency-critical {
+  border: 2px solid #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.8);
+  animation: pulse-ring 1s infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+/* Expanded View */
+.dot-expanded-card {
+  width: 320px;
+  height: 240px;
+  border-radius: 14px;
+  color: var(--dot-text-color);
+  font-size: var(--dot-text-size);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+  background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+/* Dedicated Background Layer: opacity and blur are isolated here so text is NEVER dimmed */
+.card-bg-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--dot-bg);
+  opacity: var(--dot-opacity);
+  backdrop-filter: blur(var(--dot-blur));
+  -webkit-backdrop-filter: blur(var(--dot-blur));
+  pointer-events: none;
+  z-index: 0;
+}
+
+.card-header {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background: rgba(0, 0, 0, 0.15);
+  -webkit-app-region: drag;
+}
+
+.header-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+
+.header-actions {
+  display: flex;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+}
+
+.icon-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.card-body {
+  flex: 1;
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Note Editor */
+.note-textarea {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  resize: none;
+  outline: none;
+}
+
+/* Checklist */
+.checklist-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checklist-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  color: inherit;
+  font-size: inherit;
+  outline: none;
+}
+
+.item-done {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* Undo Snackbar */
+.undo-snackbar {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111827;
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+
+.undo-btn {
+  color: #60a5fa;
+  background: none;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* Edge Tab for Hub-Only Mode */
+.hub-edge-tab {
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.hub-edge-tab:hover {
+  filter: brightness(1.25);
+}
+
+.hub-edge-tab.edge-right {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.hub-edge-tab.edge-left {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  border-right: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.hub-edge-tab.edge-top {
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.hub-edge-tab.edge-bottom {
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.hub-edge-tab-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--dot-bg);
+  opacity: var(--dot-opacity);
+  pointer-events: none;
+}
+

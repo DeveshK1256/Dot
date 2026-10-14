@@ -1,0 +1,31 @@
+{
+  "name": "dot-app",
+  "version": "1.0.0",
+  "description": "Minimal, floating desktop notes widget",
+  "main": "src/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:renderer": "vite build",
+    "start": "electron .",
+    "test": "vitest run",
+    "test:fuzz": "vitest run tests/fuzz",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "lucide-react": "^1.16.0",
+    "node-notifier": "^10.0.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "png2icons": "^2.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

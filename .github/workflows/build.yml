@@ -1,0 +1,55 @@
+name: Build Installers
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+          - os: macos-latest
+            target: mac
+          - os: ubuntu-latest
+            target: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify icon assets exist
+        shell: bash
+        run: |
+          test -f assets/icons/app/icon.icns || { echo 'Missing icon.icns'; exit 1; }
+          test -f assets/icons/app/icon.ico || { echo 'Missing icon.ico'; exit 1; }
+          test -d assets/icons/app/png || { echo 'Missing linux png icon set'; exit 1; }
+          test -f assets/icons/tray/tray-16.png || { echo 'Missing tray-16.png'; exit 1; }
+          test -f assets/icons/tray/tray-32.png || { echo 'Missing tray-32.png'; exit 1; }
+          test -f assets/icons/tray/tray-Template.png || { echo 'Missing tray-Template.png'; exit 1; }
+          test -f assets/icons/tray/tray-Template@2x.png || { echo 'Missing tray-Template@2x.png'; exit 1; }
+
+      - run: npm run build:renderer
+
+      - name: Build installer
+        run: npx electron-builder --${{ matrix.target }} --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dot-${{ matrix.target }}
+          path: |
+            dist-package/*.exe
+            dist-package/*.dmg
+            dist-package/*.deb
+            dist-package/*.AppImage
+          if-no-files-found: ignore
