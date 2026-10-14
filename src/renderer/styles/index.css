@@ -280,3 +280,77 @@ body, html, #root {
   pointer-events: none;
 }
 
+/* Cluster Badge & Stack Styles */
+.cluster-collapsed {
+  width: 44px;
+  height: 44px;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+  -webkit-app-region: drag;
+}
+
+.cluster-collapsed:hover {
+  transform: scale(1.08);
+}
+
+.cluster-stack-layer {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.cluster-stack-2 {
+  top: 3px;
+  left: 3px;
+  background: #4f46e5;
+  opacity: 0.35;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.cluster-stack-1 {
+  top: 1.5px;
+  left: 1.5px;
+  background: #6366f1;
+  opacity: 0.55;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.cluster-main-bubble {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #ffffff;
+  z-index: 2;
+}
+
+.cluster-expanded-card {
+  width: 340px;
+  height: 280px;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(192, 132, 252, 0.3);
+}
+
+.cluster-bg-layer {
+  background: linear-gradient(135deg, #1e1b4b 0%, #2e1065 100%);
+  opacity: 0.94;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.cluster-header {
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+

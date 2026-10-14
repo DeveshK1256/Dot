@@ -59,5 +59,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = () => callback();
     ipcRenderer.on('collapse-hub', subscription);
     return () => ipcRenderer.removeListener('collapse-hub', subscription);
+  },
+
+  // Clustering
+  setClusterState: (clusterId, state) => ipcRenderer.send('set-cluster-state', { clusterId, state }),
+  getClusterData: (clusterId) => ipcRenderer.invoke('get-cluster-data', clusterId),
+  uncluster: (clusterId) => ipcRenderer.send('uncluster', clusterId),
+  onClusterDataUpdated: (callback) => {
+    const subscription = (_event, data) => callback(data);
+    ipcRenderer.on('cluster-data-updated', subscription);
+    return () => ipcRenderer.removeListener('cluster-data-updated', subscription);
   }
 });

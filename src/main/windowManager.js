@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, screen } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { HubSettingsSchema } from '../shared/schema.js';
+import { detectClusters } from './clustering.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +11,9 @@ export class WindowManager {
   constructor(storage) {
     this.storage = storage;
     this.windows = new Map(); // dotId -> BrowserWindow
+    this.clusterWindows = new Map(); // clusterId -> BrowserWindow
+    this.clusters = new Map(); // clusterId -> cluster data
+    this.clusteredDotIds = new Set();
     this.settingsWindow = null;
     this.plusButtonWindow = null;
     this.isGhostMode = false;
@@ -193,16 +197,7 @@ export class WindowManager {
     }
 
     win.on('moved', () => {
-      const currentSettings = this.storage.getSettings();
-      if (isHub && currentSettings.displayMode === 'hubOnly') {
-        return;
-      }
-      const [x, y] = win.getPosition();
-      const currentDot = this.storage.getDot(dot.id);
-      if (currentDot) {
-        currentDot.position = { x, y };
-        this.storage.saveDot(currentDot);
-      }
+      this.handleDotMoved(dot.id);
     });
 
     if (isHub) {
@@ -216,6 +211,212 @@ export class WindowManager {
 
     this.windows.set(dot.id, win);
     return win;
+  }
+
+  handleDotMoved(dotId) {
+    const win = this.windows.get(dotId);
+    if (!win || win.isDestroyed()) return;
+    const isHub = dotId === this.hubDotId;
+    const currentSettings = this.storage.getSettings();
+    if (isHub && currentSettings.displayMode === 'hubOnly') {
+      return;
+    }
+    const [x, y] = win.getPosition();
+    const currentDot = this.storage.getDot(dotId);
+    if (currentDot) {
+      currentDot.position = { x, y };
+      this.storage.saveDot(currentDot);
+    }
+    this.updateClusters();
+  }
+
+  updateClusters() {
+    const settings = this.storage.getSettings();
+    if (settings.displayMode === 'hubOnly') {
+      for (const [_, cWin] of this.clusterWindows) {
+        if (cWin && !cWin.isDestroyed()) {
+          cWin.hide();
+        }
+      }
+      return [];
+    }
+
+    const allDots = this.storage.getDots();
+    const candidateDots = allDots.filter((d) => {
+      if (d.isHub || d.id === this.hubDotId) return false;
+      return d.position && typeof d.position.x === 'number' && typeof d.position.y === 'number';
+    });
+
+    const detected = detectClusters(candidateDots, 48, 0.5);
+    const activeClusterIds = new Set(detected.map((c) => c.clusterId));
+    const newClusteredDotIds = new Set();
+
+    for (const cluster of detected) {
+      this.clusters.set(cluster.clusterId, cluster);
+      for (const dotId of cluster.dotIds) {
+        newClusteredDotIds.add(dotId);
+      }
+    }
+
+    // Hide dots belonging to newly detected clusters
+    for (const dotId of newClusteredDotIds) {
+      const win = this.windows.get(dotId);
+      if (win && !win.isDestroyed()) {
+        win.hide();
+      }
+      this.clusteredDotIds.add(dotId);
+    }
+
+    // Unhide dots that left clusters
+    for (const dotId of this.clusteredDotIds) {
+      if (!newClusteredDotIds.has(dotId)) {
+        const win = this.windows.get(dotId);
+        if (win && !win.isDestroyed()) {
+          win.show();
+        }
+        this.clusteredDotIds.delete(dotId);
+      }
+    }
+
+    // Create or update cluster badge windows
+    for (const cluster of detected) {
+      this.createOrUpdateClusterWindow(cluster);
+    }
+
+    // Destroy expired cluster windows
+    for (const [clusterId, win] of this.clusterWindows) {
+      if (!activeClusterIds.has(clusterId)) {
+        if (win && !win.isDestroyed()) {
+          win.destroy();
+        }
+        this.clusterWindows.delete(clusterId);
+        this.clusters.delete(clusterId);
+      }
+    }
+
+    return detected;
+  }
+
+  createOrUpdateClusterWindow(cluster) {
+    let win = this.clusterWindows.get(cluster.clusterId);
+    if (win && !win.isDestroyed()) {
+      const bounds = win.getBounds();
+      const isExpanded = bounds.width > 50;
+      if (!isExpanded) {
+        win.setPosition(cluster.centroid.x - 24, cluster.centroid.y - 24);
+      }
+      win.show();
+      win.webContents.send('cluster-data-updated', cluster);
+      return win;
+    }
+
+    win = new BrowserWindow({
+      width: 48,
+      height: 48,
+      x: cluster.centroid.x - 24,
+      y: cluster.centroid.y - 24,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      hasShadow: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+
+    const devUrl = 'http://localhost:5173';
+    const query = { view: 'cluster', clusterId: cluster.clusterId };
+    if (!app.isPackaged) {
+      win.loadURL(`${devUrl}?view=cluster&clusterId=${cluster.clusterId}`).catch(() => {
+        win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), { query });
+      });
+    } else {
+      win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), { query });
+    }
+
+    win.on('closed', () => {
+      this.clusterWindows.delete(cluster.clusterId);
+    });
+
+    this.clusterWindows.set(cluster.clusterId, win);
+    return win;
+  }
+
+  setClusterState(clusterId, state) {
+    const win = this.clusterWindows.get(clusterId);
+    if (!win || win.isDestroyed()) return;
+    const cluster = this.clusters.get(clusterId);
+    if (!cluster) return;
+
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: scrW, height: scrH } = primaryDisplay.workArea;
+
+    if (state === 'COLLAPSED') {
+      win.setBounds({
+        x: cluster.centroid.x - 24,
+        y: cluster.centroid.y - 24,
+        width: 48,
+        height: 48
+      });
+    } else if (state === 'EXPANDED') {
+      const cardW = 340;
+      const cardH = 280;
+      const targetX = Math.max(10, Math.min(scrW - cardW - 10, cluster.centroid.x - Math.round(cardW / 2)));
+      const targetY = Math.max(10, Math.min(scrH - cardH - 10, cluster.centroid.y - 24));
+      win.setBounds({
+        x: targetX,
+        y: targetY,
+        width: cardW,
+        height: cardH
+      });
+    }
+  }
+
+  getClusterData(clusterId) {
+    const cluster = this.clusters.get(clusterId);
+    if (!cluster) return null;
+    const dots = cluster.dotIds.map((id) => this.storage.getDot(id)).filter(Boolean);
+    const allNotes = this.storage.getAllNotes();
+    const notes = allNotes.filter((n) => cluster.dotIds.includes(n.dotId));
+    return {
+      cluster,
+      dots,
+      notes
+    };
+  }
+
+  uncluster(clusterId) {
+    const cluster = this.clusters.get(clusterId);
+    if (!cluster) return;
+    const dots = cluster.dotIds.map((id) => this.storage.getDot(id)).filter(Boolean);
+    dots.forEach((dot, index) => {
+      const offset = (index + 1) * 55;
+      dot.position = {
+        x: cluster.centroid.x - 24 + offset,
+        y: cluster.centroid.y - 24
+      };
+      this.storage.saveDot(dot);
+      const win = this.windows.get(dot.id);
+      if (win && !win.isDestroyed()) {
+        win.setPosition(dot.position.x, dot.position.y);
+        win.show();
+      }
+    });
+
+    const clusterWin = this.clusterWindows.get(clusterId);
+    if (clusterWin && !clusterWin.isDestroyed()) {
+      clusterWin.destroy();
+    }
+    this.clusterWindows.delete(clusterId);
+    this.clusters.delete(clusterId);
+    for (const id of cluster.dotIds) {
+      this.clusteredDotIds.delete(id);
+    }
+    this.updateClusters();
   }
 
   applyDisplayMode(mode) {
@@ -282,6 +483,13 @@ export class WindowManager {
       win.focus();
       this.setDotState(dotId, 'EXPANDED');
       win.webContents.send('focus-input');
+
+      // Collapse cluster window if open
+      for (const [cId, c] of this.clusters) {
+        if (c.dotIds.includes(dotId)) {
+          this.setClusterState(cId, 'COLLAPSED');
+        }
+      }
     }
   }
 
@@ -355,6 +563,8 @@ export class WindowManager {
       if (!win.isDestroyed()) {
         win.destroy();
       }
+      this.clusteredDotIds.delete(dotId);
+      this.updateClusters();
     }
   }
 
@@ -413,6 +623,11 @@ export class WindowManager {
 
   broadcast(channel, data) {
     for (const [_, win] of this.windows) {
+      if (!win.isDestroyed()) {
+        win.webContents.send(channel, data);
+      }
+    }
+    for (const [_, win] of this.clusterWindows) {
       if (!win.isDestroyed()) {
         win.webContents.send(channel, data);
       }

@@ -32,9 +32,11 @@ export function NoteItem({ note, onUpdate, onDelete }) {
     }
   }, []);
 
-  // Flush on unmount
+  // Flush on unmount and beforeunload
   React.useEffect(() => {
+    window.addEventListener('beforeunload', flushSave);
     return () => {
+      window.removeEventListener('beforeunload', flushSave);
       flushSave();
     };
   }, [flushSave]);

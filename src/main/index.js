@@ -87,6 +87,18 @@ if (!gotTheLock) {
       windowManager.bringDotToFront(dotId);
     });
 
+    ipcMain.on('set-cluster-state', (_e, { clusterId, state }) => {
+      windowManager.setClusterState(clusterId, state);
+    });
+
+    ipcMain.handle('get-cluster-data', (_e, clusterId) => {
+      return windowManager.getClusterData(clusterId);
+    });
+
+    ipcMain.on('uncluster', (_e, clusterId) => {
+      windowManager.uncluster(clusterId);
+    });
+
     ipcMain.handle('storage:getSettings', () => storage.getSettings());
     ipcMain.handle('storage:saveSettings', (_e, s) => {
       const saved = storage.saveSettings(s);

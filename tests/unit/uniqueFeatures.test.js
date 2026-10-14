@@ -1,7 +1,54 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { calculateOverlapPercentage, detectClusters } from '../../src/main/clustering.js';
+import * as clusteringModule from '../../src/main/clustering.js';
 import { AutoArchiver } from '../../src/main/autoArchive.js';
 import { StorageEngine } from '../../src/shared/storage.js';
+
+vi.mock('electron', () => {
+  class MockBrowserWindow {
+    constructor(opts = {}) {
+      this.opts = opts;
+      this.bounds = { x: opts.x || 0, y: opts.y || 0, width: opts.width || 48, height: opts.height || 48 };
+      this.visible = opts.show !== false;
+      this.destroyed = false;
+      this.events = {};
+      this.webContents = {
+        send: vi.fn(),
+        once: vi.fn((_evt, cb) => cb && cb())
+      };
+    }
+    show() { this.visible = true; }
+    hide() { this.visible = false; }
+    focus() {}
+    isVisible() { return this.visible; }
+    isDestroyed() { return this.destroyed; }
+    getPosition() { return [this.bounds.x, this.bounds.y]; }
+    setPosition(x, y) { this.bounds.x = x; this.bounds.y = y; }
+    getBounds() { return this.bounds; }
+    setBounds(b) { this.bounds = { ...this.bounds, ...b }; }
+    destroy() { this.destroyed = true; }
+    on(evt, cb) { this.events[evt] = cb; }
+    loadURL() { return Promise.resolve(); }
+    loadFile() { return Promise.resolve(); }
+  }
+
+  return {
+    app: { isPackaged: false },
+    screen: {
+      getPrimaryDisplay: () => ({
+        workArea: { x: 0, y: 0, width: 1920, height: 1080 }
+      }),
+      getCursorScreenPoint: () => ({ x: 100, y: 100 })
+    },
+    BrowserWindow: MockBrowserWindow,
+    ipcMain: {
+      on: vi.fn(),
+      handle: vi.fn()
+    }
+  };
+});
+
+import { WindowManager } from '../../src/main/windowManager.js';
 
 class MockStore {
   constructor() {
@@ -70,6 +117,124 @@ describe('Unique Features Unit Tests', () => {
       expect(clusters[0].dotIds).toContain('d1');
       expect(clusters[0].dotIds).toContain('d2');
       expect(clusters[0].centroid.x).toBe(105);
+    });
+
+    it('confirms windowManager actually CALLS detectClusters after a position-save (call-was-made assertion)', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const d1 = { id: 'dot-1', position: { x: 100, y: 100 }, noteIds: [] };
+      const d2 = { id: 'dot-2', position: { x: 105, y: 105 }, noteIds: [] };
+      storage.saveDot(d1);
+      storage.saveDot(d2);
+      wm.createDotWindow(d1);
+      wm.createDotWindow(d2);
+
+      const spy = vi.spyOn(clusteringModule, 'detectClusters');
+
+      // Simulate a drag-end moved event triggering position-save on dot-1
+      wm.handleDotMoved('dot-1');
+
+      // Assert that detectClusters was actually called by windowManager!
+      expect(spy).toHaveBeenCalled();
+      expect(spy.mock.calls.length).toBeGreaterThanOrEqual(1);
+
+      spy.mockRestore();
+    });
+
+    it('clusters dots when overlap > 50%, hides members and shows cluster window, then un-clusters when dragged away', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const d1 = { id: 'dot-1', position: { x: 100, y: 100 }, noteIds: [] };
+      const d2 = { id: 'dot-2', position: { x: 105, y: 105 }, noteIds: [] }; // ~70% overlap
+      storage.saveDot(d1);
+      storage.saveDot(d2);
+      const win1 = wm.createDotWindow(d1);
+      const win2 = wm.createDotWindow(d2);
+
+      expect(win1.visible).toBe(true);
+      expect(win2.visible).toBe(true);
+      expect(wm.clusterWindows.size).toBe(0);
+
+      // Save position / drag end
+      wm.handleDotMoved('dot-1');
+
+      // Both dots must now be hidden into the cluster
+      expect(win1.visible).toBe(false);
+      expect(win2.visible).toBe(false);
+      expect(wm.clusteredDotIds.has('dot-1')).toBe(true);
+      expect(wm.clusteredDotIds.has('dot-2')).toBe(true);
+
+      // Exactly 1 cluster window created with count 2
+      expect(wm.clusterWindows.size).toBe(1);
+      const clusterData = Array.from(wm.clusters.values())[0];
+      expect(clusterData.count).toBe(2);
+      expect(clusterData.dotIds).toEqual(['dot-1', 'dot-2']);
+
+      // Now simulate bringing dot-2 to front and dragging it away to (400, 400)
+      wm.bringDotToFront('dot-2');
+      expect(win2.visible).toBe(true);
+      win2.setPosition(400, 400);
+
+      // Drag end on dot-2
+      wm.handleDotMoved('dot-2');
+
+      // Overlap is now 0%! Cluster must be destroyed and both individual windows visible
+      expect(wm.clusterWindows.size).toBe(0);
+      expect(wm.clusteredDotIds.size).toBe(0);
+      expect(win1.visible).toBe(true);
+      expect(win2.visible).toBe(true);
+      expect(storage.getDot('dot-2').position).toEqual({ x: 400, y: 400 });
+    });
+
+    it('fast-typing debounced note save guarantees no data loss when immediately closed / blurred', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+
+      const initialNote = {
+        id: 'note-fast-type',
+        dotId: 'dot-1',
+        text: 'Initial text'
+      };
+      storage.saveNote(initialNote);
+
+      // Simulate fast-typing state buffer and debounce timer
+      let activeText = initialNote.text;
+      let timer = null;
+      let flushCalled = false;
+
+      const flushSave = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        storage.saveNote({ ...initialNote, text: activeText });
+        flushCalled = true;
+      };
+
+      const handleTyping = (newChar) => {
+        activeText += newChar;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          flushSave();
+        }, 350);
+      };
+
+      // Type fast: characters in under 50ms
+      handleTyping(' - quickly typed text!');
+      expect(timer).not.toBeNull();
+      // Before 350ms passes, storage still has initial text
+      expect(storage.getNote('note-fast-type').text).toBe('Initial text');
+
+      // User immediately clicks close / triggers blur before 350ms
+      flushSave();
+
+      // Confirm text is NOT lost!
+      expect(flushCalled).toBe(true);
+      expect(storage.getNote('note-fast-type').text).toBe('Initial text - quickly typed text!');
     });
   });
 

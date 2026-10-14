@@ -8,6 +8,9 @@ export function DotExpanded({ dot, notes, globalSettings, isPinned, onTogglePin,
   const [showSettings, setShowSettings] = useState(false);
 
   const handleCloseClick = () => {
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
     if (notes.length === 0) {
       onClose(true); // Close & delete if empty
     } else {
