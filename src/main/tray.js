@@ -6,17 +6,61 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export function setupTray({ windowManager, storage, onOpenSettings }) {
-  // Use a fallback transparent 16x16 nativeImage if icon file not yet drawn
+  const isWin = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+
+  const preferredFiles = isMac
+    ? ['tray-Template.png', 'tray-Template@2x.png']
+    : isWin
+    ? ['tray-32.png', 'tray-16.png']
+    : ['tray-16.png', 'tray-32.png'];
+
+  const candidateDirs = [
+    path.join(app.getAppPath(), 'assets/icons/tray'),
+    path.join(__dirname, '../../assets/icons/tray'),
+    path.join(process.resourcesPath, 'assets/icons/tray'),
+    path.join(process.resourcesPath, 'app.asar.unpacked/assets/icons/tray')
+  ];
+
   let icon = nativeImage.createEmpty();
-  const iconFileName = process.platform === 'darwin' ? 'tray-Template.png' : 'tray-16.png';
-  const iconPath = path.join(__dirname, '../../assets/icons/tray', iconFileName);
-  try {
-    icon = nativeImage.createFromPath(iconPath);
-  } catch (e) {
-    // Ignore missing asset in initial bootstrap
+  for (const dir of candidateDirs) {
+    for (const f of preferredFiles) {
+      const full = path.join(dir, f);
+      try {
+        const img = nativeImage.createFromPath(full);
+        if (!img.isEmpty()) {
+          icon = img;
+          break;
+        }
+      } catch (_) {}
+    }
+    if (!icon.isEmpty()) break;
   }
 
-  const tray = new Tray(icon);
+  // Windows fallback to .ico
+  if (icon.isEmpty() && isWin) {
+    const icoDirs = [
+      path.join(app.getAppPath(), 'assets/icons/app/icon.ico'),
+      path.join(__dirname, '../../assets/icons/app/icon.ico'),
+      path.join(process.resourcesPath, 'assets/icons/app/icon.ico')
+    ];
+    for (const p of icoDirs) {
+      try {
+        const img = nativeImage.createFromPath(p);
+        if (!img.isEmpty()) {
+          icon = img;
+          break;
+        }
+      } catch (_) {}
+    }
+  }
+
+  let tray = null;
+  try {
+    tray = new Tray(icon);
+  } catch (err) {
+    console.error('Tray initialization error:', err);
+  }
 
   function buildMenu() {
     const settings = storage ? storage.getSettings() : { displayMode: 'all' };
@@ -67,15 +111,18 @@ export function setupTray({ windowManager, storage, onOpenSettings }) {
       }
     ]);
 
-    tray.setContextMenu(contextMenu);
+    if (tray) {
+      tray.setContextMenu(contextMenu);
+    }
   }
 
   buildMenu();
-  tray.setToolTip('Dot - Minimalist Floating Notes');
-
-  tray.updateDisplayMode = () => {
-    buildMenu();
-  };
+  if (tray) {
+    tray.setToolTip('Dot - Minimalist Floating Notes');
+    tray.updateDisplayMode = () => {
+      buildMenu();
+    };
+  }
 
   return tray;
 }

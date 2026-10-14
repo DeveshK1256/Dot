@@ -180,11 +180,17 @@ export class WindowManager {
 
     // In dev mode load vite server or file in production
     const devUrl = 'http://localhost:5173';
-    win.loadURL(`${devUrl}?dotId=${dot.id}`).catch(() => {
+    if (!app.isPackaged) {
+      win.loadURL(`${devUrl}?dotId=${dot.id}`).catch(() => {
+        win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
+          query: { dotId: dot.id }
+        });
+      });
+    } else {
       win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
         query: { dotId: dot.id }
       });
-    });
+    }
 
     win.on('moved', () => {
       const currentSettings = this.storage.getSettings();
@@ -386,11 +392,17 @@ export class WindowManager {
     });
 
     const devUrl = 'http://localhost:5173';
-    this.settingsWindow.loadURL(`${devUrl}?view=settings`).catch(() => {
+    if (!app.isPackaged) {
+      this.settingsWindow.loadURL(`${devUrl}?view=settings`).catch(() => {
+        this.settingsWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
+          query: { view: 'settings' }
+        });
+      });
+    } else {
       this.settingsWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
         query: { view: 'settings' }
       });
-    });
+    }
 
     this.settingsWindow.on('closed', () => {
       this.settingsWindow = null;
@@ -472,11 +484,17 @@ export class WindowManager {
     });
 
     const devUrl = 'http://localhost:5173';
-    this.plusButtonWindow.loadURL(`${devUrl}?view=plus-button`).catch(() => {
+    if (!app.isPackaged) {
+      this.plusButtonWindow.loadURL(`${devUrl}?view=plus-button`).catch(() => {
+        this.plusButtonWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
+          query: { view: 'plus-button' }
+        });
+      });
+    } else {
       this.plusButtonWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
         query: { view: 'plus-button' }
       });
-    });
+    }
 
     this.plusButtonWindow.on('closed', () => {
       this.plusButtonWindow = null;

@@ -100,6 +100,7 @@ if (!gotTheLock) {
       }
       return saved;
     });
+    ipcMain.handle('storage:getDots', () => storage.getDots());
     ipcMain.handle('storage:saveDot', (_e, d) => {
       const saved = storage.saveDot(d);
       windowManager.broadcast('dot-updated', saved);
