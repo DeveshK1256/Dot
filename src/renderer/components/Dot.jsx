@@ -106,17 +106,18 @@ export function Dot({ dotId }) {
   }, [dotId, expanded]);
 
   const handleSaveNote = async (updatedNote) => {
+    setNotes((prev) => {
+      const idx = prev.findIndex((n) => n.id === updatedNote.id);
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = updatedNote;
+        return next;
+      }
+      return [updatedNote, ...prev];
+    });
+
     if (window.electronAPI) {
       await window.electronAPI.saveNote(updatedNote);
-      setNotes((prev) => {
-        const idx = prev.findIndex((n) => n.id === updatedNote.id);
-        if (idx !== -1) {
-          const next = [...prev];
-          next[idx] = updatedNote;
-          return next;
-        }
-        return [updatedNote, ...prev];
-      });
     }
   };
 

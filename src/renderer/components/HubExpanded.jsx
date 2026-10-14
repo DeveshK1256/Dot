@@ -47,7 +47,18 @@ export function HubExpanded({
     refreshData();
 
     if (window.electronAPI) {
-      const unsubDot = window.electronAPI.onDotUpdated(() => refreshData());
+      const unsubDot = window.electronAPI.onDotUpdated((updatedDot) => {
+        if (!updatedDot) return;
+        setDots((prev) => {
+          const idx = prev.findIndex((d) => d.id === updatedDot.id);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = updatedDot;
+            return next;
+          }
+          return [...prev, updatedDot];
+        });
+      });
       const unsubNote = window.electronAPI.onNoteUpdated((updatedNote) => {
         setNotes((prev) => {
           const idx = prev.findIndex((n) => n.id === updatedNote.id);
@@ -125,17 +136,18 @@ export function HubExpanded({
   };
 
   const handleSaveInlineNote = async (updatedNote) => {
+    setNotes((prev) => {
+      const idx = prev.findIndex((n) => n.id === updatedNote.id);
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = updatedNote;
+        return next;
+      }
+      return [updatedNote, ...prev];
+    });
+
     if (window.electronAPI) {
       await window.electronAPI.saveNote(updatedNote);
-      setNotes((prev) => {
-        const idx = prev.findIndex((n) => n.id === updatedNote.id);
-        if (idx !== -1) {
-          const next = [...prev];
-          next[idx] = updatedNote;
-          return next;
-        }
-        return [updatedNote, ...prev];
-      });
     }
   };
 

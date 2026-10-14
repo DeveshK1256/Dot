@@ -4,16 +4,64 @@ import { Checklist } from './Checklist.jsx';
 
 export function NoteItem({ note, onUpdate, onDelete }) {
   const [mode, setMode] = useState(note.mode || 'text');
+  const [text, setText] = useState(note.text || '');
+
+  const noteRef = React.useRef(note);
+  const textRef = React.useRef(text);
+  const debounceTimerRef = React.useRef(null);
+  const onUpdateRef = React.useRef(onUpdate);
+
+  React.useEffect(() => {
+    noteRef.current = note;
+    onUpdateRef.current = onUpdate;
+  }, [note, onUpdate]);
+
+  // Sync if external note or id changes
+  React.useEffect(() => {
+    setText(note.text || '');
+    textRef.current = note.text || '';
+  }, [note.id, note.text]);
+
+  const flushSave = React.useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (textRef.current !== noteRef.current.text) {
+      onUpdateRef.current({ ...noteRef.current, text: textRef.current });
+    }
+  }, []);
+
+  // Flush on unmount
+  React.useEffect(() => {
+    return () => {
+      flushSave();
+    };
+  }, [flushSave]);
 
   const handleTextChange = (e) => {
-    onUpdate({ ...note, text: e.target.value });
+    const newText = e.target.value;
+    setText(newText);
+    textRef.current = newText;
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+      if (textRef.current !== noteRef.current.text) {
+        onUpdateRef.current({ ...noteRef.current, text: textRef.current });
+      }
+    }, 350);
   };
 
   const handleChecklistChange = (checklist) => {
+    flushSave();
     onUpdate({ ...note, checklist });
   };
 
   const handleDeadlineChange = (e) => {
+    flushSave();
     const val = e.target.value;
     const epoch = val ? new Date(val).getTime() : null;
     onUpdate({ ...note, deadline: epoch, firedReminders: [] });
@@ -70,8 +118,9 @@ export function NoteItem({ note, onUpdate, onDelete }) {
           <textarea
             className="note-textarea"
             placeholder="Type your note here..."
-            value={note.text || ''}
+            value={text}
             onChange={handleTextChange}
+            onBlur={handleBlur}
           />
         ) : (
           <Checklist items={note.checklist || []} onChange={handleChecklistChange} />
