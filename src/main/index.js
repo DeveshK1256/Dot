@@ -4,6 +4,7 @@ import { StorageEngine } from '../shared/storage.js';
 import { WindowManager } from './windowManager.js';
 import { DeadlineScheduler } from './deadlineScheduler.js';
 import { setupTray } from './tray.js';
+import { setStartupEnabled } from './startup.js';
 
 const electronStore = new Store();
 const storage = new StorageEngine(electronStore);
@@ -41,8 +42,12 @@ if (!gotTheLock) {
       }
     });
 
-    // Register global shortcuts
+    // Configure startup / login item settings
     const settings = storage.getSettings();
+    const launchAtStartup = settings?.launchAtStartup !== false;
+    setStartupEnabled(launchAtStartup);
+
+    // Register global shortcuts
     if (settings.quickCaptureShortcut) {
       globalShortcut.register(settings.quickCaptureShortcut, () => {
         windowManager.openNewNoteInHub();
@@ -88,6 +93,9 @@ if (!gotTheLock) {
       try {
         const saved = storage.saveSettings(s);
         windowManager.broadcast('settings-updated', saved);
+        if (s.launchAtStartup !== undefined) {
+          setStartupEnabled(s.launchAtStartup);
+        }
         return saved;
       } catch (err) {
         console.error('[IPC ERROR storage:saveSettings]:', err);

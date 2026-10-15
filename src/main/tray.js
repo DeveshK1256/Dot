@@ -76,7 +76,7 @@ export function setupTray({ windowManager, storage, onOpenSettings }) {
       },
       { type: 'separator' },
       {
-        label: 'Hub Settings...',
+        label: 'Settings...',
         click: onOpenSettings
       },
       { type: 'separator' },

@@ -16,7 +16,8 @@ export const DefaultSettings = {
   quickCaptureShortcut: 'CommandOrControl+Shift+Space',
   ghostModeShortcut: 'CommandOrControl+Alt+G',
   soundEnabled: true,
-  alarmSound: 'chime'
+  alarmSound: 'chime',
+  launchAtStartup: true
 };
 
 export const ALARM_SOUND_PRESETS = [

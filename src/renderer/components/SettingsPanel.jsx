@@ -12,7 +12,8 @@ export function SettingsPanel({ onSave, onClose }) {
     defaultTextColor: '#ffffff',
     defaultExpandTimerMs: 4000,
     soundEnabled: true,
-    alarmSound: 'chime'
+    alarmSound: 'chime',
+    launchAtStartup: true
   });
 
   useEffect(() => {
@@ -153,6 +154,34 @@ export function SettingsPanel({ onSave, onClose }) {
             </button>
           </div>
         )}
+      </div>
+
+      {/* Launch at Startup */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          borderRadius: '8px',
+          padding: '10px 12px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600 }}>Launch at Startup</span>
+          <span style={{ fontSize: '11px', opacity: 0.7 }}>Start Dot automatically when logging into Windows</span>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={settings.launchAtStartup !== false}
+            onChange={(e) => handleChange('launchAtStartup', e.target.checked)}
+            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+          />
+        </label>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

@@ -168,7 +168,7 @@ export function HubExpanded({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Layers size={15} style={{ color: '#818cf8' }} />
           <span className="header-title" style={{ color: '#ffffff', letterSpacing: '0.8px', fontWeight: 'bold' }}>
-            HUB
+            DOT
           </span>
           <span
             style={{
@@ -195,7 +195,7 @@ export function HubExpanded({
           </button>
           <button
             className="icon-btn"
-            title="Hub Settings"
+            title="Dot Settings"
             onClick={() => setIsSettingsOpen(true)}
             style={{ color: '#ffffff' }}
           >
@@ -209,7 +209,7 @@ export function HubExpanded({
           >
             <Pin size={14} />
           </button>
-          <button className="icon-btn" title="Close Hub" onClick={onClose} style={{ color: '#ffffff' }}>
+          <button className="icon-btn" title="Close Dot" onClick={onClose} style={{ color: '#ffffff' }}>
             <X size={15} />
           </button>
         </div>

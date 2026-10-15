@@ -62,7 +62,7 @@ export function HubSettingsModal({ dot, onSave, onClose, onReset }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-            Hub Settings
+            Dot Settings
           </span>
           <div
             style={{
@@ -93,7 +93,7 @@ export function HubSettingsModal({ dot, onSave, onClose, onReset }) {
         {/* Hub Edge Position */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label style={{ fontSize: '11px', opacity: 0.9, fontWeight: 500 }}>Dock Edge (Hub-Only Line)</label>
+            <label style={{ fontSize: '11px', opacity: 0.9, fontWeight: 500 }}>Dock Edge</label>
             <select
               value={hubEdge}
               onChange={(e) => setHubEdge(e.target.value)}
@@ -114,13 +114,13 @@ export function HubSettingsModal({ dot, onSave, onClose, onReset }) {
             </select>
           </div>
           <span style={{ fontSize: '10px', opacity: 0.6 }}>
-            Screen edge where the thin line tab is anchored when in Hub-Only mode.
+            Screen edge where the Dot edge tab is anchored.
           </span>
         </div>
 
         {/* Hub Color */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <label style={{ fontSize: '11px', opacity: 0.9 }}>Hub Accent Color</label>
+          <label style={{ fontSize: '11px', opacity: 0.9 }}>Dot Accent Color</label>
           <input
             type="color"
             value={hubColor}
@@ -132,7 +132,7 @@ export function HubSettingsModal({ dot, onSave, onClose, onReset }) {
         {/* Hub Opacity */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', opacity: 0.9 }}>
-            <span>Hub Opacity</span>
+            <span>Dot Opacity</span>
             <span>{Math.round(hubOpacity * 100)}%</span>
           </div>
           <input

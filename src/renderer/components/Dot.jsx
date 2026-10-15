@@ -132,7 +132,7 @@ export function Dot({ dotId = 'hub-dot' }) {
         <div
           className={`hub-edge-tab edge-${dot.hubEdge || 'right'}`}
           onClick={expand}
-          title="Dot Hub (Click or hover to expand)"
+          title="Dot (Click or hover to expand)"
         >
           <div
             className="hub-edge-tab-bg"

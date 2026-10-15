@@ -49,6 +49,7 @@ describe('Deadline Alarm Sound System', () => {
   it('includes soundEnabled = true and alarmSound = chime in DefaultSettings', () => {
     expect(DefaultSettings.soundEnabled).toBe(true);
     expect(DefaultSettings.alarmSound).toBe('chime');
+    expect(DefaultSettings.launchAtStartup).toBe(true);
     expect(ALARM_SOUND_PRESETS.map((p) => p.id)).toEqual(['chime', 'bell', 'soft-ping']);
   });
 
