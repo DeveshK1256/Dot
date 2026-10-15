@@ -1,7 +1,7 @@
 {
   "name": "dot-app",
   "version": "1.0.0",
-  "description": "Minimal, floating desktop notes widget",
+  "description": "Minimal, glassmorphic edge-docked desktop notes widget for Windows with deadline alerts and audio alarms",
   "main": "src/main/index.js",
   "type": "module",
   "scripts": {
