@@ -7,6 +7,26 @@ import { detectClusters } from './clustering.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function safeLoadWindow(win, url, query) {
+  if (!win || win.isDestroyed()) return;
+  const filePath = path.join(__dirname, '../../dist/renderer/index.html');
+  if (!app.isPackaged) {
+    win.loadURL(url).catch(() => {
+      try {
+        if (!win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+          win.loadFile(filePath, { query }).catch(() => {});
+        }
+      } catch (_) {}
+    });
+  } else {
+    try {
+      if (!win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+        win.loadFile(filePath, { query }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+}
+
 export class WindowManager {
   constructor(storage) {
     this.storage = storage;
@@ -18,6 +38,8 @@ export class WindowManager {
     this.plusButtonWindow = null;
     this.isGhostMode = false;
     this.hubDotId = null;
+    this.expandedDotIds = new Set();
+    this.isProgrammaticMove = false;
   }
 
   ensureHubDot() {
@@ -205,18 +227,13 @@ export class WindowManager {
       });
     }
 
-    // In dev mode load vite server or file in production
     const devUrl = 'http://localhost:5173';
-    if (!app.isPackaged) {
-      win.loadURL(`${devUrl}?dotId=${dot.id}`).catch(() => {
-        win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
-          query: { dotId: dot.id }
-        });
-      });
-    } else {
-      win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
-        query: { dotId: dot.id }
-      });
+    safeLoadWindow(win, `${devUrl}?dotId=${dot.id}`, { dotId: dot.id });
+
+    if (isHub && process.argv.includes('--enable-logging')) {
+      try {
+        win.webContents.openDevTools({ mode: 'detach' });
+      } catch (_) {}
     }
 
     win.on('moved', () => {
@@ -237,6 +254,7 @@ export class WindowManager {
   }
 
   handleDotMoved(dotId) {
+    if (this.isProgrammaticMove) return;
     const win = this.windows.get(dotId);
     if (!win || win.isDestroyed()) return;
     const isHub = dotId === this.hubDotId;
@@ -267,6 +285,7 @@ export class WindowManager {
     const allDots = this.storage.getDots();
     const candidateDots = allDots.filter((d) => {
       if (d.isHub || d.id === this.hubDotId) return false;
+      if (this.expandedDotIds && this.expandedDotIds.has(d.id)) return false;
       return d.position && typeof d.position.x === 'number' && typeof d.position.y === 'number';
     });
 
@@ -351,15 +370,24 @@ export class WindowManager {
       }
     });
 
+    if (process.argv.includes('--enable-logging')) {
+      try {
+        win.webContents.openDevTools({ mode: 'detach' });
+      } catch (_) {}
+    }
+
+    if (win.webContents && typeof win.webContents.on === 'function') {
+      win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+        console.log(`[RENDERER ${cluster.clusterId} L${level}] ${message} (${sourceId}:${line})`);
+      });
+      win.webContents.on('render-process-gone', (_e, details) => {
+        console.error(`[RENDER-PROCESS-GONE ${cluster.clusterId}]`, details);
+      });
+    }
+
     const devUrl = 'http://localhost:5173';
     const query = { view: 'cluster', clusterId: cluster.clusterId };
-    if (!app.isPackaged) {
-      win.loadURL(`${devUrl}?view=cluster&clusterId=${cluster.clusterId}`).catch(() => {
-        win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), { query });
-      });
-    } else {
-      win.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), { query });
-    }
+    safeLoadWindow(win, `${devUrl}?view=cluster&clusterId=${cluster.clusterId}`, query);
 
     win.on('closed', () => {
       this.clusterWindows.delete(cluster.clusterId);
@@ -534,6 +562,7 @@ export class WindowManager {
 
   openDotFromCluster(dotId) {
     try {
+      this.expandedDotIds.add(dotId);
       const activeCluster = Array.from(this.clusters.values()).find((c) =>
         c.dotIds.includes(dotId)
       );
@@ -589,7 +618,9 @@ export class WindowManager {
           const newY = Math.max(20, Math.min(height - 280, (activeCluster.centroid?.y || dot.position?.y || 100) + 10));
           dot.position = { x: newX, y: newY };
           this.storage.saveDot(dot);
+          this.isProgrammaticMove = true;
           win.setPosition(newX, newY);
+          this.isProgrammaticMove = false;
         }
       }
 
@@ -640,6 +671,12 @@ export class WindowManager {
 
   setDotState(dotId, state) {
     try {
+      if (state === 'EXPANDED') {
+        this.expandedDotIds.add(dotId);
+      } else if (state === 'COLLAPSED') {
+        this.expandedDotIds.delete(dotId);
+      }
+
       const win = this.windows.get(dotId);
       if (!win || win.isDestroyed()) return;
 
@@ -662,6 +699,7 @@ export class WindowManager {
           width: 48,
           height: 48
         });
+        this.updateClusters();
       } else if (state === 'EXPANDED') {
         const cardW = 340;
         const cardH = isHub ? 340 : 260;
@@ -695,6 +733,7 @@ export class WindowManager {
         win.destroy();
       }
       this.clusteredDotIds.delete(dotId);
+      this.expandedDotIds.delete(dotId);
       this.updateClusters();
     }
   }
@@ -733,17 +772,7 @@ export class WindowManager {
     });
 
     const devUrl = 'http://localhost:5173';
-    if (!app.isPackaged) {
-      this.settingsWindow.loadURL(`${devUrl}?view=settings`).catch(() => {
-        this.settingsWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
-          query: { view: 'settings' }
-        });
-      });
-    } else {
-      this.settingsWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
-        query: { view: 'settings' }
-      });
-    }
+    safeLoadWindow(this.settingsWindow, `${devUrl}?view=settings`, { view: 'settings' });
 
     this.settingsWindow.on('closed', () => {
       this.settingsWindow = null;
@@ -830,17 +859,7 @@ export class WindowManager {
     });
 
     const devUrl = 'http://localhost:5173';
-    if (!app.isPackaged) {
-      this.plusButtonWindow.loadURL(`${devUrl}?view=plus-button`).catch(() => {
-        this.plusButtonWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
-          query: { view: 'plus-button' }
-        });
-      });
-    } else {
-      this.plusButtonWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'), {
-        query: { view: 'plus-button' }
-      });
-    }
+    safeLoadWindow(this.plusButtonWindow, `${devUrl}?view=plus-button`, { view: 'plus-button' });
 
     this.plusButtonWindow.on('closed', () => {
       this.plusButtonWindow = null;

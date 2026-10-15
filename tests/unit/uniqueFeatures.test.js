@@ -25,13 +25,39 @@ vi.mock('electron', () => {
     isVisible() { return this.visible; }
     isDestroyed() { return this.destroyed; }
     getPosition() { return [this.bounds.x, this.bounds.y]; }
-    setPosition(x, y) { this.bounds.x = x; this.bounds.y = y; }
+    setPosition(x, y) {
+      this.bounds.x = x;
+      this.bounds.y = y;
+      if (this.events['moved']) {
+        this.events['moved']();
+      }
+    }
     getBounds() { return this.bounds; }
     setBounds(b) { this.bounds = { ...this.bounds, ...b }; }
-    destroy() { this.destroyed = true; }
+    destroy() {
+      this.destroyed = true;
+      this.visible = false;
+      if (this.events['closed']) {
+        this.events['closed']();
+      }
+    }
     on(evt, cb) { this.events[evt] = cb; }
-    loadURL() { return Promise.resolve(); }
-    loadFile() { return Promise.resolve(); }
+    loadURL() {
+      if (this.destroyed) return Promise.reject(new TypeError('Object has been destroyed'));
+      return new Promise((_, reject) => {
+        setTimeout(() => {
+          if (this.destroyed) {
+            reject(new TypeError('Object has been destroyed'));
+          } else {
+            reject(new Error('ERR_CONNECTION_REFUSED'));
+          }
+        }, 5);
+      });
+    }
+    loadFile() {
+      if (this.destroyed) return Promise.reject(new TypeError('Object has been destroyed'));
+      return Promise.resolve();
+    }
   }
 
   return {
@@ -344,6 +370,40 @@ describe('Unique Features Unit Tests', () => {
       expect(win2.visible).toBe(true);
       expect(wm.clusteredDotIds.has('dot-c2')).toBe(false);
       expect(wm.clusterWindows.size).toBe(0);
+    });
+
+    it('shrinks a 3-dot cluster when one dot is opened, keeping remaining 2 clustered without crashing', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const d1 = { id: 'dot-3a', position: { x: 100, y: 100 }, noteIds: [] };
+      const d2 = { id: 'dot-3b', position: { x: 105, y: 105 }, noteIds: [] };
+      const d3 = { id: 'dot-3c', position: { x: 108, y: 108 }, noteIds: [] };
+      storage.saveDot(d1);
+      storage.saveDot(d2);
+      storage.saveDot(d3);
+      const win1 = wm.createDotWindow(d1);
+      const win2 = wm.createDotWindow(d2);
+      const win3 = wm.createDotWindow(d3);
+
+      wm.handleDotMoved('dot-3a');
+      expect(wm.clusterWindows.size).toBe(1);
+      expect(wm.clusteredDotIds.size).toBe(3);
+
+      // Open dot-3b from hub
+      wm.bringDotToFront('dot-3b');
+
+      expect(win2.visible).toBe(true);
+      expect(win2.bounds.width).toBe(340);
+      expect(wm.clusteredDotIds.has('dot-3b')).toBe(false);
+
+      // Cluster still has 2 dots
+      expect(wm.clusterWindows.size).toBe(1);
+      expect(wm.clusteredDotIds.has('dot-3a')).toBe(true);
+      expect(wm.clusteredDotIds.has('dot-3c')).toBe(true);
+      expect(win1.visible).toBe(false);
+      expect(win3.visible).toBe(false);
     });
 
     it('focuses and expands a normal visible dot without error (Case C)', () => {

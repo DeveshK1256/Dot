@@ -17,9 +17,14 @@ export function ClusterBadge({ clusterId }) {
     loadData();
 
     if (window.electronAPI) {
-      const unsubCluster = window.electronAPI.onClusterDataUpdated((updatedCluster) => {
+      const unsubCluster = window.electronAPI.onClusterDataUpdated(async (updatedCluster) => {
         if (updatedCluster && updatedCluster.clusterId === clusterId) {
-          setClusterData((prev) => (prev ? { ...prev, cluster: updatedCluster } : null));
+          const freshData = await window.electronAPI.getClusterData(clusterId);
+          if (freshData) {
+            setClusterData(freshData);
+          } else {
+            setClusterData((prev) => (prev ? { ...prev, cluster: updatedCluster } : null));
+          }
         }
       });
 
