@@ -70,6 +70,9 @@ if (!gotTheLock) {
     // Apply saved displayMode (persists across restarts)
     windowManager.applyDisplayMode(settings.displayMode || 'all');
 
+    // Initialize cluster state for existing dots
+    windowManager.updateClusters();
+
     // Create persistent "+" button window
     windowManager.createPlusButtonWindow();
 

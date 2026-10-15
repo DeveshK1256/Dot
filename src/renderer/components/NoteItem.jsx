@@ -57,6 +57,10 @@ export function NoteItem({ note, onUpdate, onDelete }) {
     }, 350);
   };
 
+  const handleBlur = () => {
+    flushSave();
+  };
+
   const handleChecklistChange = (checklist) => {
     flushSave();
     onUpdate({ ...note, checklist });

@@ -155,9 +155,20 @@ export class WindowManager {
     const isHub = dot.id === this.hubDotId || dot.isHub;
     const shouldShow = isHub || !isHubOnly;
 
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenW, height: screenH } = primaryDisplay.workArea;
+    let posX = dot.position?.x;
+    let posY = dot.position?.y;
+    if (typeof posX !== 'number' || isNaN(posX) || posX < -50 || posX > screenW + 50) {
+      posX = 100;
+    }
+    if (typeof posY !== 'number' || isNaN(posY) || posY < -50 || posY > screenH + 50) {
+      posY = 100;
+    }
+
     let initBounds = {
-      x: dot.position?.x ?? 100,
-      y: dot.position?.y ?? 100,
+      x: posX,
+      y: posY,
       width: 48,
       height: 48
     };
@@ -503,6 +514,12 @@ export class WindowManager {
       }
 
       if (win && !win.isDestroyed()) {
+        const bounds = win.getBounds();
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const { width: screenW, height: screenH } = primaryDisplay.workArea;
+        if (bounds.x < 0 || bounds.x > screenW - 60 || bounds.y < 0 || bounds.y > screenH - 60) {
+          win.setPosition(100, 100);
+        }
         win.show();
         win.focus();
         this.setDotState(dotId, 'EXPANDED');
@@ -646,11 +663,23 @@ export class WindowManager {
           height: 48
         });
       } else if (state === 'EXPANDED') {
+        const cardW = 340;
+        const cardH = isHub ? 340 : 260;
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const { width: screenW, height: screenH } = primaryDisplay.workArea;
+        let x = bounds.x;
+        let y = bounds.y;
+        if (x < 10 || x + cardW > screenW || isNaN(x)) {
+          x = Math.max(20, Math.min(screenW - cardW - 20, x));
+        }
+        if (y < 10 || y + cardH > screenH || isNaN(y)) {
+          y = Math.max(20, Math.min(screenH - cardH - 20, y));
+        }
         win.setBounds({
-          x: bounds.x,
-          y: bounds.y,
-          width: 340,
-          height: isHub ? 340 : 260
+          x,
+          y,
+          width: cardW,
+          height: cardH
         });
       }
     } catch (err) {
