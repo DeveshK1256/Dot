@@ -51,5 +51,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = () => callback();
     ipcRenderer.on('collapse-hub', subscription);
     return () => ipcRenderer.removeListener('collapse-hub', subscription);
+  },
+  onPlayAlarmSound: (callback) => {
+    const subscription = (_event, data) => callback(data);
+    ipcRenderer.on('play-alarm-sound', subscription);
+    return () => ipcRenderer.removeListener('play-alarm-sound', subscription);
   }
 });

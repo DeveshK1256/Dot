@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { HubExpanded } from './HubExpanded.jsx';
 import { useExpandTimer } from '../hooks/useExpandTimer.js';
 import { HubSettingsSchema } from '../../shared/schema.js';
+import { playAlarmSound } from '../utils/soundPlayer.js';
 
 export function Dot({ dotId = 'hub-dot' }) {
   const [dot, setDot] = useState(null);
@@ -63,11 +64,16 @@ export function Dot({ dotId = 'hub-dot' }) {
         collapse();
       }) : () => {};
 
+      const unsubAlarm = window.electronAPI.onPlayAlarmSound ? window.electronAPI.onPlayAlarmSound(({ sound }) => {
+        playAlarmSound(sound);
+      }) : () => {};
+
       return () => {
         unsubSettings();
         unsubDot();
         unsubFocus();
         unsubCollapseHub();
+        unsubAlarm();
       };
     }
   }, [dotId, expand, collapse]);
@@ -131,8 +137,10 @@ export function Dot({ dotId = 'hub-dot' }) {
           <div
             className="hub-edge-tab-bg"
             style={{
-              backgroundColor: dot.hubColor || dot.color || '#4f46e5',
-              opacity: dot.hubOpacity ?? dot.opacity ?? 0.92
+              background: `linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.06) 100%), ${effectiveColor}`,
+              opacity: effectiveOpacity,
+              backdropFilter: `blur(${effectiveBlurRadius}px)`,
+              WebkitBackdropFilter: `blur(${effectiveBlurRadius}px)`
             }}
           />
         </div>

@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { Volume2, VolumeX, Play } from 'lucide-react';
+import { ALARM_SOUND_PRESETS } from '../../shared/schema.js';
+import { playAlarmSound } from '../utils/soundPlayer.js';
 
 export function SettingsPanel({ onSave, onClose }) {
   const [settings, setSettings] = useState({
@@ -8,19 +11,25 @@ export function SettingsPanel({ onSave, onClose }) {
     defaultTextSize: 14,
     defaultTextColor: '#ffffff',
     defaultExpandTimerMs: 4000,
-    displayMode: 'all'
+    soundEnabled: true,
+    alarmSound: 'chime'
   });
 
   useEffect(() => {
     if (window.electronAPI) {
       window.electronAPI.getSettings().then((s) => {
-        if (s) setSettings(s);
+        if (s) setSettings((prev) => ({ ...prev, ...s }));
       });
     }
   }, []);
 
   const handleChange = (key, val) => {
     setSettings((prev) => ({ ...prev, [key]: val }));
+  };
+
+  const handlePreviewSound = (e) => {
+    e.preventDefault();
+    playAlarmSound(settings.alarmSound || 'chime');
   };
 
   const handleSave = () => {
@@ -35,18 +44,21 @@ export function SettingsPanel({ onSave, onClose }) {
       style={{
         width: '380px',
         padding: '20px',
-        background: '#18181b',
+        background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%), rgba(24, 24, 27, 0.92)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
         color: '#f4f4f5',
         borderRadius: '12px',
         fontFamily: 'sans-serif',
         display: 'flex',
         flexDirection: 'column',
-        gap: '16px',
-        boxShadow: '0 8px 30px rgba(0,0,0,0.5)'
+        gap: '14px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: '16px', margin: 0 }}>Dot Settings</h2>
+        <h2 style={{ fontSize: '16px', margin: 0, letterSpacing: '0.5px' }}>Dot Settings</h2>
         {/* Live Preview Mini-Dot */}
         <div
           style={{
@@ -55,10 +67,92 @@ export function SettingsPanel({ onSave, onClose }) {
             borderRadius: '50%',
             backgroundColor: settings.defaultDotColor,
             opacity: settings.defaultOpacity,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            border: '1px solid rgba(255, 255, 255, 0.2)'
           }}
           title="Live Preview"
         />
+      </div>
+
+      {/* Deadline Alarm Sound Section */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          borderRadius: '8px',
+          padding: '10px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {settings.soundEnabled !== false ? (
+              <Volume2 size={16} style={{ color: '#60a5fa' }} />
+            ) : (
+              <VolumeX size={16} style={{ color: '#9ca3af' }} />
+            )}
+            <span style={{ fontSize: '13px', fontWeight: 600 }}>Deadline Alarm Sound</span>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={settings.soundEnabled !== false}
+              onChange={(e) => handleChange('soundEnabled', e.target.checked)}
+              style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+            />
+          </label>
+        </div>
+
+        {settings.soundEnabled !== false && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <select
+              value={settings.alarmSound || 'chime'}
+              onChange={(e) => handleChange('alarmSound', e.target.value)}
+              style={{
+                flex: 1,
+                background: 'rgba(0, 0, 0, 0.45)',
+                color: '#fff',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '6px',
+                padding: '6px 8px',
+                fontSize: '12px',
+                outline: 'none'
+              }}
+            >
+              {ALARM_SOUND_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id} style={{ background: '#18181b', color: '#fff' }}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={handlePreviewSound}
+              title="Preview Sound"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: 'rgba(59, 130, 246, 0.2)',
+                border: '1px solid rgba(59, 130, 246, 0.4)',
+                borderRadius: '6px',
+                color: '#93c5fd',
+                fontSize: '11px',
+                fontWeight: 600,
+                padding: '6px 10px',
+                cursor: 'pointer',
+                transition: 'background 0.15s ease'
+              }}
+            >
+              <Play size={12} fill="#93c5fd" />
+              <span>Preview</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -141,7 +235,7 @@ export function SettingsPanel({ onSave, onClose }) {
         />
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
         <button
           onClick={onClose}
           style={{

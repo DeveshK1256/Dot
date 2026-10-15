@@ -14,8 +14,16 @@ export const DefaultSettings = {
   autoCloseEmptyDot: true,
   deadlineReminderWindowsMin: [1440, 60, 15, 0],
   quickCaptureShortcut: 'CommandOrControl+Shift+Space',
-  ghostModeShortcut: 'CommandOrControl+Alt+G'
+  ghostModeShortcut: 'CommandOrControl+Alt+G',
+  soundEnabled: true,
+  alarmSound: 'chime'
 };
+
+export const ALARM_SOUND_PRESETS = [
+  { id: 'chime', label: 'Chime' },
+  { id: 'bell', label: 'Bell' },
+  { id: 'soft-ping', label: 'Soft Ping' }
+];
 
 export const HubSettingsSchema = {
   hubEdge: 'right', // 'right' | 'left' | 'top' | 'bottom'

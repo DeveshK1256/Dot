@@ -318,7 +318,9 @@ export function HubExpanded({
               style={{
                 width: '100%',
                 padding: '7px 10px',
-                background: 'rgba(255, 255, 255, 0.08)',
+                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%)',
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
                 border: '1px dashed rgba(255, 255, 255, 0.25)',
                 borderRadius: '8px',
                 cursor: 'pointer',
@@ -330,13 +332,16 @@ export function HubExpanded({
                 fontSize: '12px',
                 fontWeight: 500,
                 marginBottom: '8px',
-                transition: 'background 0.15s ease'
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.12)',
+                transition: 'all 0.15s ease'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.16)';
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
               }}
             >
               <Plus size={14} />
@@ -383,21 +388,28 @@ export function HubExpanded({
                       onClick={() => handleRowClick(note)}
                       style={{
                         padding: '8px 10px',
-                        background: 'rgba(255,255,255,0.06)',
+                        background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
                         borderRadius: '8px',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '8px',
-                        border: '1px solid rgba(255,255,255,0.05)',
-                        transition: 'background 0.15s ease'
+                        border: '1px solid rgba(255, 255, 255, 0.14)',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                        transition: 'all 0.15s ease'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(255,255,255,0.14)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%)';
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.28)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.22)';
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%)';
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.14)';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
