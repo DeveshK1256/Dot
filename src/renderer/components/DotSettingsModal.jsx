@@ -1,38 +1,36 @@
 import React, { useState } from 'react';
 import { RotateCcw, X } from 'lucide-react';
 
-export function DotSettingsModal({ dot, globalSettings, onSave, onClose, onReset }) {
-  // Use dot override if present, else fallback to global setting
-  const [color, setColor] = useState(dot.color || globalSettings?.defaultDotColor || '#3b82f6');
-  const [opacity, setOpacity] = useState(dot.opacity ?? globalSettings?.defaultOpacity ?? 0.88);
-  const [blurRadius, setBlurRadius] = useState(dot.blurRadius ?? globalSettings?.defaultBlurRadius ?? 12);
-  const [textSize, setTextSize] = useState(dot.textSize ?? globalSettings?.defaultTextSize ?? 14);
-  const [textColor, setTextColor] = useState(dot.textColor ?? globalSettings?.defaultTextColor ?? '#ffffff');
-  const [expandTimerMs, setExpandTimerMs] = useState(dot.expandTimerMs ?? globalSettings?.defaultExpandTimerMs ?? 4000);
+export function NoteSettingsModal({ note, dot, globalSettings, onSave, onClose, onReset }) {
+  const target = note || dot || {};
+  // Use note override if present, else fallback to global setting
+  const [color, setColor] = useState(target.color || globalSettings?.defaultDotColor || '#3b82f6');
+  const [opacity, setOpacity] = useState(target.opacity ?? globalSettings?.defaultOpacity ?? 0.88);
+  const [blurRadius, setBlurRadius] = useState(target.blurRadius ?? globalSettings?.defaultBlurRadius ?? 12);
+  const [textSize, setTextSize] = useState(target.textSize ?? globalSettings?.defaultTextSize ?? 14);
+  const [textColor, setTextColor] = useState(target.textColor ?? globalSettings?.defaultTextColor ?? '#ffffff');
 
   const hasOverride = Boolean(
-    dot.color ||
-    dot.opacity !== undefined ||
-    dot.blurRadius !== undefined ||
-    dot.textSize !== undefined ||
-    dot.textColor ||
-    dot.expandTimerMs !== undefined
+    target.color ||
+    target.opacity !== undefined ||
+    target.blurRadius !== undefined ||
+    target.textSize !== undefined ||
+    target.textColor
   );
 
   const handleSave = () => {
     onSave({
-      ...dot,
+      ...target,
       color,
       opacity,
       blurRadius,
       textSize,
-      textColor,
-      expandTimerMs
+      textColor
     });
   };
 
   const handleReset = () => {
-    onReset();
+    if (onReset) onReset();
   };
 
   return (
@@ -58,7 +56,7 @@ export function DotSettingsModal({ dot, globalSettings, onSave, onClose, onReset
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Dot Settings
+            Note Style
           </span>
           <div
             style={{
@@ -148,23 +146,6 @@ export function DotSettingsModal({ dot, globalSettings, onSave, onClose, onReset
             style={{ width: '36px', height: '20px', border: 'none', background: 'none', cursor: 'pointer' }}
           />
         </div>
-
-        {/* Expand Timer */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', opacity: 0.85 }}>
-            <span>Shrink Timer</span>
-            <span>{expandTimerMs / 1000}s</span>
-          </div>
-          <input
-            type="range"
-            min="1000"
-            max="15000"
-            step="500"
-            value={expandTimerMs}
-            onChange={(e) => setExpandTimerMs(parseInt(e.target.value, 10))}
-            style={{ width: '100%', height: '4px' }}
-          />
-        </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
@@ -223,3 +204,5 @@ export function DotSettingsModal({ dot, globalSettings, onSave, onClose, onReset
     </div>
   );
 }
+
+export const DotSettingsModal = NoteSettingsModal;

@@ -98,22 +98,55 @@ describe('StorageEngine Unit Tests', () => {
     expect(storage.getNote('note-2')).toBeNull();
   });
 
-  it('supports displayMode in settings and validates valid options', () => {
-    const defaultSettings = storage.getSettings();
-    expect(defaultSettings.displayMode).toBe('all');
+  it('migrates v2 data to v3: copies dot styles to notes, keeps only hub-dot, and creates backup', () => {
+    const rawStore = new MockStore();
+    rawStore.set('settings', { schemaVersion: 2, defaultDotColor: '#3b82f6' });
+    rawStore.set('dots', {
+      'dot-old-1': {
+        id: 'dot-old-1',
+        position: { x: 200, y: 300 },
+        color: '#ef4444',
+        opacity: 0.75,
+        textSize: 16,
+        textColor: '#fef08a',
+        blurRadius: 8,
+        noteIds: ['note-old-1']
+      }
+    });
+    rawStore.set('notes', {
+      'note-old-1': {
+        id: 'note-old-1',
+        dotId: 'dot-old-1',
+        text: 'Migrated content'
+      }
+    });
 
-    // Update to hubOnly
-    storage.saveSettings({ ...defaultSettings, displayMode: 'hubOnly' });
-    expect(storage.getSettings().displayMode).toBe('hubOnly');
+    const v3Storage = new StorageEngine(rawStore);
 
-    // Switch back to all
-    storage.saveSettings({ ...defaultSettings, displayMode: 'all' });
-    expect(storage.getSettings().displayMode).toBe('all');
+    // Verify backup created
+    const backup = rawStore.get('backup_pre_hub_only');
+    expect(backup).toBeDefined();
+    expect(backup.dots['dot-old-1']).toBeDefined();
 
-    // Rejects invalid mode
-    expect(() => {
-      storage.saveSettings({ ...defaultSettings, displayMode: 'invalidMode' });
-    }).toThrow();
+    // Verify note received dot styling and points to hub-dot
+    const note = v3Storage.getNote('note-old-1');
+    expect(note.color).toBe('#ef4444');
+    expect(note.opacity).toBe(0.75);
+    expect(note.textSize).toBe(16);
+    expect(note.textColor).toBe('#fef08a');
+    expect(note.blurRadius).toBe(8);
+    expect(note.dotId).toBe('hub-dot');
+
+    // Verify only hub-dot remains in dots
+    const dots = v3Storage.getDots();
+    expect(dots.length).toBe(1);
+    expect(dots[0].id).toBe('hub-dot');
+    expect(dots[0].isHub).toBe(true);
+    expect(dots[0].noteIds).toContain('note-old-1');
+
+    // Verify settings updated to schemaVersion 3
+    expect(v3Storage.getSettings().schemaVersion).toBe(3);
+    expect(v3Storage.getSettings().displayMode).toBeUndefined();
   });
 
   it('retrieves all notes across multiple dots via getAllNotes', () => {

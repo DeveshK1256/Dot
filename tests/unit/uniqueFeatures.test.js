@@ -1,6 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import { calculateOverlapPercentage, detectClusters } from '../../src/main/clustering.js';
-import * as clusteringModule from '../../src/main/clustering.js';
 import { AutoArchiver } from '../../src/main/autoArchive.js';
 import { StorageEngine } from '../../src/shared/storage.js';
 import { HubSettingsSchema } from '../../src/shared/schema.js';
@@ -9,7 +7,7 @@ vi.mock('electron', () => {
   class MockBrowserWindow {
     constructor(opts = {}) {
       this.opts = opts;
-      this.bounds = { x: opts.x || 0, y: opts.y || 0, width: opts.width || 48, height: opts.height || 48 };
+      this.bounds = { x: opts.x || 0, y: opts.y || 0, width: opts.width || 6, height: opts.height || 120 };
       this.visible = opts.show !== false;
       this.destroyed = false;
       this.events = {};
@@ -25,6 +23,7 @@ vi.mock('electron', () => {
     focus() {}
     setAlwaysOnTop() {}
     moveTop() {}
+    setIgnoreMouseEvents() {}
     isVisible() { return this.visible; }
     isDestroyed() { return this.destroyed; }
     getPosition() { return [this.bounds.x, this.bounds.y]; }
@@ -123,116 +122,107 @@ class MockStore {
   }
 }
 
-describe('Unique Features Unit Tests', () => {
-  describe('Clustering & Overlap Math', () => {
-    it('calculates 100% overlap for identical rectangles', () => {
-      const rect = { x: 100, y: 100, width: 48, height: 48 };
-      expect(calculateOverlapPercentage(rect, rect)).toBe(1.0);
-    });
-
-    it('calculates 0% overlap for disjoint rectangles', () => {
-      const rectA = { x: 0, y: 0, width: 48, height: 48 };
-      const rectB = { x: 100, y: 100, width: 48, height: 48 };
-      expect(calculateOverlapPercentage(rectA, rectB)).toBe(0);
-    });
-
-    it('detects clusters when overlap exceeds 50% threshold', () => {
-      const dots = [
-        { id: 'd1', position: { x: 100, y: 100 } },
-        { id: 'd2', position: { x: 110, y: 110 } }, // ~62% overlap
-        { id: 'd3', position: { x: 500, y: 500 } }  // Disjoint
-      ];
-      const clusters = detectClusters(dots, 48, 0.5);
-      expect(clusters.length).toBe(1);
-      expect(clusters[0].count).toBe(2);
-      expect(clusters[0].dotIds).toContain('d1');
-      expect(clusters[0].dotIds).toContain('d2');
-      expect(clusters[0].centroid.x).toBe(105);
-    });
-
-    it('confirms windowManager actually CALLS detectClusters after a position-save (call-was-made assertion)', () => {
+describe('Single Hub & Core Features Unit Tests', () => {
+  describe('Single-Hub Window & Edge Invariants', () => {
+    it('calculates edge strip and card bounds accurately across all 4 edges', () => {
       const store = new MockStore();
       const storage = new StorageEngine(store);
       const wm = new WindowManager(storage);
 
-      const d1 = { id: 'dot-1', position: { x: 100, y: 100 }, noteIds: [] };
-      const d2 = { id: 'dot-2', position: { x: 105, y: 105 }, noteIds: [] };
-      storage.saveDot(d1);
-      storage.saveDot(d2);
-      wm.createDotWindow(d1);
-      wm.createDotWindow(d2);
+      // Collapsed bounds
+      const rightCollapsed = wm.getHubEdgeBounds('right', false);
+      expect(rightCollapsed).toEqual({ x: 1914, y: 480, width: 6, height: 120 });
 
-      const spy = vi.spyOn(clusteringModule, 'detectClusters');
+      const leftCollapsed = wm.getHubEdgeBounds('left', false);
+      expect(leftCollapsed).toEqual({ x: 0, y: 480, width: 6, height: 120 });
 
-      // Simulate a drag-end moved event triggering position-save on dot-1
-      wm.handleDotMoved('dot-1');
+      const topCollapsed = wm.getHubEdgeBounds('top', false);
+      expect(topCollapsed).toEqual({ x: 900, y: 0, width: 120, height: 6 });
 
-      // Assert that detectClusters was actually called by windowManager!
-      expect(spy).toHaveBeenCalled();
-      expect(spy.mock.calls.length).toBeGreaterThanOrEqual(1);
+      const bottomCollapsed = wm.getHubEdgeBounds('bottom', false);
+      expect(bottomCollapsed).toEqual({ x: 900, y: 1074, width: 120, height: 6 });
 
-      spy.mockRestore();
+      // Expanded bounds
+      const rightExpanded = wm.getHubEdgeBounds('right', true);
+      expect(rightExpanded).toEqual({ x: 1580, y: 350, width: 340, height: 380 });
+
+      const leftExpanded = wm.getHubEdgeBounds('left', true);
+      expect(leftExpanded).toEqual({ x: 0, y: 350, width: 340, height: 380 });
+
+      const topExpanded = wm.getHubEdgeBounds('top', true);
+      expect(topExpanded).toEqual({ x: 790, y: 0, width: 340, height: 380 });
+
+      const bottomExpanded = wm.getHubEdgeBounds('bottom', true);
+      expect(bottomExpanded).toEqual({ x: 790, y: 700, width: 340, height: 380 });
     });
 
-    it('clusters dots when overlap > 50%, hides members and shows cluster window, then un-clusters when dragged away', () => {
+    it('creates a single hub window and expands/collapses properly', () => {
       const store = new MockStore();
       const storage = new StorageEngine(store);
       const wm = new WindowManager(storage);
 
-      const d1 = { id: 'dot-1', position: { x: 100, y: 100 }, noteIds: [] };
-      const d2 = { id: 'dot-2', position: { x: 105, y: 105 }, noteIds: [] }; // ~70% overlap
-      storage.saveDot(d1);
-      storage.saveDot(d2);
-      const win1 = wm.createDotWindow(d1);
-      const win2 = wm.createDotWindow(d2);
+      const win = wm.createHubWindow();
+      expect(win).toBeDefined();
+      expect(wm.windows.size).toBe(1);
+      expect(wm.windows.get('hub-dot')).toBe(win);
 
-      expect(win1.visible).toBe(true);
-      expect(win2.visible).toBe(true);
-      expect(wm.clusterWindows.size).toBe(0);
+      // Expand hub
+      wm.setDotState('hub-dot', 'EXPANDED');
+      expect(wm.isExpanded).toBe(true);
+      expect(win.getBounds().width).toBe(340);
+      expect(win.getBounds().height).toBe(380);
 
-      // Save position / drag end
-      wm.handleDotMoved('dot-1');
-
-      // Both dots must now be hidden into the cluster
-      expect(win1.visible).toBe(false);
-      expect(win2.visible).toBe(false);
-      expect(wm.clusteredDotIds.has('dot-1')).toBe(true);
-      expect(wm.clusteredDotIds.has('dot-2')).toBe(true);
-
-      // Exactly 1 cluster window created with count 2
-      expect(wm.clusterWindows.size).toBe(1);
-      const clusterData = Array.from(wm.clusters.values())[0];
-      expect(clusterData.count).toBe(2);
-      expect(clusterData.dotIds).toEqual(['dot-1', 'dot-2']);
-
-      // Now simulate bringing dot-2 to front and dragging it away to (400, 400)
-      wm.bringDotToFront('dot-2');
-      expect(win2.visible).toBe(true);
-      win2.setPosition(400, 400);
-
-      // Drag end on dot-2
-      wm.handleDotMoved('dot-2');
-
-      // Overlap is now 0%! Cluster must be destroyed and both individual windows visible
-      expect(wm.clusterWindows.size).toBe(0);
-      expect(wm.clusteredDotIds.size).toBe(0);
-      expect(win1.visible).toBe(true);
-      expect(win2.visible).toBe(true);
-      expect(storage.getDot('dot-2').position).toEqual({ x: 400, y: 400 });
+      // Collapse hub
+      wm.setDotState('hub-dot', 'COLLAPSED');
+      expect(wm.isExpanded).toBe(false);
+      expect(win.getBounds().width).toBe(6);
+      expect(win.getBounds().height).toBe(120);
     });
 
+    it('hotkey invocation via openNewNoteInHub expands hub window and broadcasts focus-input', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const win = wm.createHubWindow();
+      wm.openNewNoteInHub();
+
+      expect(wm.isExpanded).toBe(true);
+      expect(win.visible).toBe(true);
+      expect(win.getBounds().width).toBe(340);
+      expect(win.webContents.send).toHaveBeenCalledWith('focus-input');
+    });
+
+    it('toggles ghost mode on the single hub window', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      wm.createHubWindow();
+      expect(wm.isGhostMode).toBe(false);
+
+      const ghostOn = wm.toggleGhostMode();
+      expect(ghostOn).toBe(true);
+      expect(wm.isGhostMode).toBe(true);
+
+      const ghostOff = wm.toggleGhostMode();
+      expect(ghostOff).toBe(false);
+      expect(wm.isGhostMode).toBe(false);
+    });
+  });
+
+  describe('Debounced Save & Typing Guarantees', () => {
     it('fast-typing debounced note save guarantees no data loss when immediately closed / blurred', () => {
       const store = new MockStore();
       const storage = new StorageEngine(store);
 
       const initialNote = {
         id: 'note-fast-type',
-        dotId: 'dot-1',
+        dotId: 'hub-dot',
         text: 'Initial text'
       };
       storage.saveNote(initialNote);
 
-      // Simulate fast-typing state buffer and debounce timer
       let activeText = initialNote.text;
       let timer = null;
       let flushCalled = false;
@@ -254,16 +244,13 @@ describe('Unique Features Unit Tests', () => {
         }, 350);
       };
 
-      // Type fast: characters in under 50ms
       handleTyping(' - quickly typed text!');
       expect(timer).not.toBeNull();
-      // Before 350ms passes, storage still has initial text
       expect(storage.getNote('note-fast-type').text).toBe('Initial text');
 
-      // User immediately clicks close / triggers blur before 350ms
+      // User blurs / closes
       flushSave();
 
-      // Confirm text is NOT lost!
       expect(flushCalled).toBe(true);
       expect(storage.getNote('note-fast-type').text).toBe('Initial text - quickly typed text!');
     });
@@ -276,16 +263,15 @@ describe('Unique Features Unit Tests', () => {
       const storage = new StorageEngine(store);
       const archiver = new AutoArchiver(storage, archiveStore);
 
-      const dot = { id: 'dot-a', position: { x: 0, y: 0 }, noteIds: [] };
-      storage.saveDot(dot);
+      const hubDot = { id: 'hub-dot', isHub: true, noteIds: [] };
+      storage.saveDot(hubDot);
 
       const now = Date.now();
       const fifteenDaysAgo = now - 15 * 24 * 60 * 60 * 1000;
 
-      // Note with completed tasks older than 14 days
       const oldDoneNote = {
         id: 'note-old-done',
-        dotId: 'dot-a',
+        dotId: 'hub-dot',
         checklist: [{ id: '1', label: 'Done task', done: true }],
         firedReminders: [],
         createdAt: fifteenDaysAgo,
@@ -293,10 +279,9 @@ describe('Unique Features Unit Tests', () => {
       };
       storage.saveNote(oldDoneNote);
 
-      // Note with incomplete tasks
       const recentNote = {
         id: 'note-pending',
-        dotId: 'dot-a',
+        dotId: 'hub-dot',
         checklist: [{ id: '2', label: 'Pending task', done: false }],
         firedReminders: [],
         createdAt: fifteenDaysAgo,
@@ -307,184 +292,38 @@ describe('Unique Features Unit Tests', () => {
       const archivedCount = archiver.runArchiveJob(14, now);
       expect(archivedCount).toBe(1);
 
-      // Old done note should be in archive store and removed from active notes
       expect(storage.getNote('note-old-done')).toBeNull();
       expect(archiveStore.get('archivedNotes.note-old-done')).toBeDefined();
-
-      // Pending note stays in active storage
       expect(storage.getNote('note-pending')).toBeDefined();
     });
   });
 
-  describe('Hub Note Click & bringDotToFront Handling across states', () => {
-    it('restores and focuses a dot closed via "Hide to Tray" (Case A)', () => {
-      const store = new MockStore();
-      const storage = new StorageEngine(store);
-      const wm = new WindowManager(storage);
-
-      const d1 = { id: 'dot-hidden-tray', position: { x: 150, y: 150 }, noteIds: [] };
-      storage.saveDot(d1);
-      const win = wm.createDotWindow(d1);
-      expect(win.visible).toBe(true);
-
-      // Dot is closed via "Hide to Tray"
-      wm.hideDotWindow('dot-hidden-tray');
-      expect(win.visible).toBe(false);
-
-      // User clicks note in hub list -> calls bringDotToFront
-      wm.bringDotToFront('dot-hidden-tray');
-
-      // Window must be re-shown, focused, and expanded
-      expect(win.visible).toBe(true);
-      expect(win.bounds.width).toBe(340);
-      expect(win.bounds.height).toBe(260);
-      expect(win.webContents.send).toHaveBeenCalledWith('focus-input');
-    });
-
-    it('opens a dot from an active cluster and un-clusters cleanly (Case B)', () => {
-      const store = new MockStore();
-      const storage = new StorageEngine(store);
-      const wm = new WindowManager(storage);
-
-      const d1 = { id: 'dot-c1', position: { x: 100, y: 100 }, noteIds: [] };
-      const d2 = { id: 'dot-c2', position: { x: 105, y: 105 }, noteIds: [] }; // >50% overlap
-      storage.saveDot(d1);
-      storage.saveDot(d2);
-      const win1 = wm.createDotWindow(d1);
-      const win2 = wm.createDotWindow(d2);
-
-      // Trigger clustering
-      wm.handleDotMoved('dot-c1');
-      expect(win1.visible).toBe(false);
-      expect(win2.visible).toBe(false);
-      expect(wm.clusteredDotIds.has('dot-c1')).toBe(true);
-      expect(wm.clusteredDotIds.has('dot-c2')).toBe(true);
-      expect(wm.clusterWindows.size).toBe(1);
-
-      // User clicks dot-c1 in hub list -> calls bringDotToFront('dot-c1')
-      wm.bringDotToFront('dot-c1');
-
-      // dot-c1 should now be visible, expanded, and unclustered
-      expect(win1.visible).toBe(true);
-      expect(win1.bounds.width).toBe(340);
-      expect(wm.clusteredDotIds.has('dot-c1')).toBe(false);
-
-      // Since the cluster only had 2 dots, dissolving dot-c1 leaves dot-c2 free
-      expect(win2.visible).toBe(true);
-      expect(wm.clusteredDotIds.has('dot-c2')).toBe(false);
-      expect(wm.clusterWindows.size).toBe(0);
-    });
-
-    it('shrinks a 3-dot cluster when one dot is opened, keeping remaining 2 clustered without crashing', () => {
-      const store = new MockStore();
-      const storage = new StorageEngine(store);
-      const wm = new WindowManager(storage);
-
-      const d1 = { id: 'dot-3a', position: { x: 100, y: 100 }, noteIds: [] };
-      const d2 = { id: 'dot-3b', position: { x: 105, y: 105 }, noteIds: [] };
-      const d3 = { id: 'dot-3c', position: { x: 108, y: 108 }, noteIds: [] };
-      storage.saveDot(d1);
-      storage.saveDot(d2);
-      storage.saveDot(d3);
-      const win1 = wm.createDotWindow(d1);
-      const win2 = wm.createDotWindow(d2);
-      const win3 = wm.createDotWindow(d3);
-
-      wm.handleDotMoved('dot-3a');
-      expect(wm.clusterWindows.size).toBe(1);
-      expect(wm.clusteredDotIds.size).toBe(3);
-
-      // Open dot-3b from hub
-      wm.bringDotToFront('dot-3b');
-
-      expect(win2.visible).toBe(true);
-      expect(win2.bounds.width).toBe(340);
-      expect(wm.clusteredDotIds.has('dot-3b')).toBe(false);
-
-      // Cluster still has 2 dots
-      expect(wm.clusterWindows.size).toBe(1);
-      expect(wm.clusteredDotIds.has('dot-3a')).toBe(true);
-      expect(wm.clusteredDotIds.has('dot-3c')).toBe(true);
-      expect(win1.visible).toBe(false);
-      expect(win3.visible).toBe(false);
-    });
-
-    it('focuses and expands a normal visible dot without error (Case C)', () => {
-      const store = new MockStore();
-      const storage = new StorageEngine(store);
-      const wm = new WindowManager(storage);
-
-      const d1 = { id: 'dot-normal', position: { x: 200, y: 200 }, noteIds: [] };
-      storage.saveDot(d1);
-      const win = wm.createDotWindow(d1);
-      expect(win.visible).toBe(true);
-
-      // User clicks note in hub list
-      wm.bringDotToFront('dot-normal');
-
-      expect(win.visible).toBe(true);
-      expect(win.bounds.width).toBe(340);
-      expect(win.webContents.send).toHaveBeenCalledWith('focus-input');
-    });
-
-    it('gracefully recreates a window if previously destroyed, and handles non-existent dot safely', () => {
-      const store = new MockStore();
-      const storage = new StorageEngine(store);
-      const wm = new WindowManager(storage);
-
-      const d1 = { id: 'dot-recreate', position: { x: 300, y: 300 }, noteIds: [] };
-      storage.saveDot(d1);
-      const win = wm.createDotWindow(d1);
-      win.destroy();
-
-      // Window was destroyed, bringing to front recreates it safely
-      expect(() => wm.bringDotToFront('dot-recreate')).not.toThrow();
-      const newWin = wm.windows.get('dot-recreate');
-      expect(newWin.isDestroyed()).toBe(false);
-      expect(newWin.visible).toBe(true);
-
-      // Calling bringDotToFront with non-existent dotId logs warning and does NOT throw
-      expect(() => wm.bringDotToFront('non-existent-dot-id')).not.toThrow();
-    });
-  });
-
   describe('Note Deletion & Debounce Race Verification', () => {
-    it('permanently deletes note from storage, removes from dot.noteIds, and does not resurrect on display mode toggle', () => {
+    it('permanently deletes note from storage and updates hub noteIds', () => {
       const store = new MockStore();
       const storage = new StorageEngine(store);
-      const wm = new WindowManager(storage);
 
-      const dot = { id: 'dot-test-del', position: { x: 100, y: 100 }, noteIds: ['note-del-1'] };
-      const note = { id: 'note-del-1', dotId: 'dot-test-del', text: 'To be deleted' };
-      storage.saveDot(dot);
+      const hubDot = { id: 'hub-dot', isHub: true, noteIds: [] };
+      storage.saveDot(hubDot);
+
+      const note = { id: 'note-del-1', dotId: 'hub-dot', text: 'To be deleted' };
       storage.saveNote(note);
 
       expect(storage.getNote('note-del-1')).toBeDefined();
-      expect(storage.getNotesByDot('dot-test-del').length).toBe(1);
-      expect(storage.getDot('dot-test-del').noteIds).toContain('note-del-1');
+      expect(storage.getDot('hub-dot').noteIds).toContain('note-del-1');
 
-      // Delete note
       const deleted = storage.deleteNote('note-del-1');
       expect(deleted).toBe(true);
 
-      // Verify removed from storage and dot
       expect(storage.getNote('note-del-1')).toBeNull();
-      expect(storage.getNotesByDot('dot-test-del').length).toBe(0);
-      expect(storage.getDot('dot-test-del').noteIds).not.toContain('note-del-1');
-
-      // Toggle display mode between 'hubOnly' and 'all'
-      wm.applyDisplayMode('hubOnly');
-      expect(storage.getNotesByDot('dot-test-del').length).toBe(0);
-
-      wm.applyDisplayMode('all');
-      expect(storage.getNotesByDot('dot-test-del').length).toBe(0);
+      expect(storage.getDot('hub-dot').noteIds).not.toContain('note-del-1');
     });
 
     it('simulates rapid delete cancelling pending typing debounce without resurrecting note', () => {
       const store = new MockStore();
       const storage = new StorageEngine(store);
 
-      const note = { id: 'note-debounce-del', dotId: 'dot-1', text: 'Typing something' };
+      const note = { id: 'note-debounce-del', dotId: 'hub-dot', text: 'Typing something' };
       storage.saveNote(note);
 
       let isDeleting = false;
@@ -500,12 +339,10 @@ describe('Unique Features Unit Tests', () => {
         storage.saveNote({ ...note, text: activeText });
       };
 
-      // User types
       debounceTimer = setTimeout(() => {
         flushSave();
       }, 350);
 
-      // User immediately clicks delete within 50ms (before 350ms passes)
       isDeleting = true;
       if (debounceTimer) {
         clearTimeout(debounceTimer);
@@ -513,10 +350,8 @@ describe('Unique Features Unit Tests', () => {
       }
       storage.deleteNote('note-debounce-del');
 
-      // Simulate unmount flush
       flushSave();
 
-      // Confirm note is NOT re-saved
       expect(storage.getNote('note-debounce-del')).toBeNull();
     });
   });
@@ -525,11 +360,10 @@ describe('Unique Features Unit Tests', () => {
     it('uses per-note alertWindowsMin when specified on note, falling back to global settings when omitted', () => {
       const store = new MockStore();
       const storage = new StorageEngine(store);
-      const wm = new WindowManager(storage);
 
       const noteWithCustomAlerts = {
         id: 'note-custom-alerts',
-        dotId: 'dot-1',
+        dotId: 'hub-dot',
         text: 'Custom alerts',
         deadline: Date.now() + 30 * 60 * 1000,
         alertWindowsMin: [30, 0],
@@ -537,7 +371,7 @@ describe('Unique Features Unit Tests', () => {
       };
       const noteWithDefaultAlerts = {
         id: 'note-default-alerts',
-        dotId: 'dot-1',
+        dotId: 'hub-dot',
         text: 'Default alerts',
         deadline: Date.now() + 60 * 60 * 1000,
         firedReminders: []
@@ -561,17 +395,15 @@ describe('Unique Features Unit Tests', () => {
     });
   });
 
-  describe('Hub Settings Reset to Defaults & Visibility Clamping', () => {
-    it('resets hub settings to HubSettingsSchema defaults without losing isHub or vanishing off-screen', () => {
+  describe('Hub Settings Reset to Defaults & Clamping', () => {
+    it('resets hub settings to HubSettingsSchema defaults without losing isHub or edge alignment', () => {
       const store = new MockStore();
       const storage = new StorageEngine(store);
       const wm = new WindowManager(storage);
 
-      // Initialize hub
       const initialHub = wm.ensureHubDot();
       expect(initialHub.isHub).toBe(true);
 
-      // Simulate user changing hub settings
       const modifiedHub = {
         ...initialHub,
         hubEdge: 'left',
@@ -581,13 +413,9 @@ describe('Unique Features Unit Tests', () => {
       };
       storage.saveDot(modifiedHub);
 
-      // Now simulate "Reset to Defaults"
       const resetHub = {
         ...modifiedHub,
         isHub: true,
-        position: modifiedHub.position || { x: 50, y: 50 },
-        color: HubSettingsSchema.hubColor,
-        opacity: HubSettingsSchema.hubOpacity,
         hubEdge: HubSettingsSchema.hubEdge,
         hubColor: HubSettingsSchema.hubColor,
         hubOpacity: HubSettingsSchema.hubOpacity,
@@ -602,12 +430,7 @@ describe('Unique Features Unit Tests', () => {
       expect(saved.hubEdge).toBe('right');
       expect(saved.hubColor).toBe(HubSettingsSchema.hubColor);
 
-      // Confirm updateHubPosition calculates valid on-screen bounds in hubOnly mode
-      storage.saveSettings({ ...storage.getSettings(), displayMode: 'hubOnly' });
-      const hubWin = wm.createDotWindow(saved);
-      wm.updateHubPosition(saved);
-
-      const bounds = hubWin.getBounds();
+      const bounds = wm.getHubEdgeBounds(saved.hubEdge, false);
       expect(bounds.x).toBeGreaterThanOrEqual(0);
       expect(bounds.y).toBeGreaterThanOrEqual(0);
       expect(bounds.width).toBe(6);
@@ -618,7 +441,6 @@ describe('Unique Features Unit Tests', () => {
       const store = new MockStore();
       const storage = new StorageEngine(store);
 
-      // Save corrupted hub with NaN / out-of-bounds coordinates
       storage.saveDot({
         id: 'hub-dot',
         isHub: true,
@@ -633,53 +455,6 @@ describe('Unique Features Unit Tests', () => {
       expect(sanitizedHub.position.y).toBeGreaterThanOrEqual(0);
       expect(isNaN(sanitizedHub.position.x)).toBe(false);
       expect(isNaN(sanitizedHub.position.y)).toBe(false);
-    });
-
-    it('spawns new dots clear of the plus button corner and avoids overlapping or instant clustering', () => {
-      const store = new MockStore();
-      const storage = new StorageEngine(store);
-      storage.saveSettings({ ...storage.getSettings(), plusButtonCorner: 'bottom-right' });
-
-      const wm = new WindowManager(storage);
-      wm.ensureHubDot();
-      const plusWin = wm.createPlusButtonWindow();
-      const moveTopSpy = vi.spyOn(plusWin, 'moveTop');
-
-      // Spawn 4 dots sequentially
-      const spawnedWins = [];
-      for (let i = 0; i < 4; i++) {
-        const win = wm.spawnDotFromPlusButton();
-        spawnedWins.push(win);
-      }
-
-      expect(spawnedWins.length).toBe(4);
-      expect(moveTopSpy).toHaveBeenCalledTimes(4);
-
-      // Verify each dot position is clear of the corner button area (workArea is 1920x1080, button at 1856, 1016)
-      const spawnedDots = storage.getDots().filter((d) => !d.isHub);
-      expect(spawnedDots.length).toBe(4);
-
-      for (const dot of spawnedDots) {
-        // Expanded card right edge = dot.position.x + 340. Must be < 1856 (leaving space before plus button)
-        expect(dot.position.x + 340).toBeLessThanOrEqual(1856);
-        // Expanded card bottom edge = dot.position.y + 260. Must be < 1016 (leaving space above plus button)
-        expect(dot.position.y + 260).toBeLessThanOrEqual(1016);
-      }
-
-      // Verify no two dots have >= 50% overlap (collapsed size 48x48)
-      for (let i = 0; i < spawnedDots.length; i++) {
-        for (let j = i + 1; j < spawnedDots.length; j++) {
-          const rectA = { x: spawnedDots[i].position.x, y: spawnedDots[i].position.y, width: 48, height: 48 };
-          const rectB = { x: spawnedDots[j].position.x, y: spawnedDots[j].position.y, width: 48, height: 48 };
-          const overlap = calculateOverlapPercentage(rectA, rectB);
-          expect(overlap).toBe(0);
-        }
-      }
-
-      // Verify clusters map does not cluster them
-      const candidateDots = spawnedDots.map((d) => ({ ...d }));
-      const detected = detectClusters(candidateDots, 48, 0.5);
-      expect(detected.length).toBe(0);
     });
   });
 });

@@ -20,6 +20,12 @@ export class StorageEngine {
     if (!this.store.get('notes')) {
       this.store.set('notes', {});
     }
+
+    // Check if migration to v3 is needed (or missing schemaVersion)
+    const settings = this.store.get('settings') || {};
+    if (!settings.schemaVersion || settings.schemaVersion < 3) {
+      this.migrateToV3();
+    }
   }
 
   // Settings
@@ -61,8 +67,15 @@ export class StorageEngine {
     const dot = this.getDot(dotId);
     if (!dot) return false;
 
-    if (deleteNotes && Array.isArray(dot.noteIds)) {
-      for (const noteId of dot.noteIds) {
+    if (deleteNotes) {
+      const noteIdsToDelete = new Set(Array.isArray(dot.noteIds) ? dot.noteIds : []);
+      const allNotes = this.getAllNotes();
+      for (const n of allNotes) {
+        if (n.dotId === dotId) {
+          noteIdsToDelete.add(n.id);
+        }
+      }
+      for (const noteId of noteIdsToDelete) {
         this.deleteNote(noteId);
       }
     }
@@ -78,6 +91,9 @@ export class StorageEngine {
 
   getNotesByDot(dotId) {
     const notesObj = this.store.get('notes') || {};
+    if (dotId === 'hub-dot') {
+      return Object.values(notesObj);
+    }
     return Object.values(notesObj).filter((n) => n.dotId === dotId);
   }
 
@@ -91,16 +107,33 @@ export class StorageEngine {
     const now = Date.now();
     const updated = {
       ...note,
+      dotId: note.dotId || 'hub-dot',
       createdAt: existing?.createdAt || note.createdAt || now,
       updatedAt: note.updatedAt || now
     };
     this.store.set(`notes.${note.id}`, updated);
 
-    // Link to Dot noteIds if not present
-    const dot = this.getDot(note.dotId);
-    if (dot && !dot.noteIds.includes(note.id)) {
-      dot.noteIds.push(note.id);
-      this.saveDot(dot);
+    // Link to target dot noteIds
+    const targetDotId = updated.dotId;
+    const targetDot = this.getDot(targetDotId);
+    if (targetDot) {
+      if (!Array.isArray(targetDot.noteIds)) targetDot.noteIds = [];
+      if (!targetDot.noteIds.includes(note.id)) {
+        targetDot.noteIds.push(note.id);
+        this.saveDot(targetDot);
+      }
+    }
+
+    // Also link to hub-dot if target is different and hub-dot exists
+    if (targetDotId !== 'hub-dot') {
+      const hubDot = this.getDot('hub-dot');
+      if (hubDot) {
+        if (!Array.isArray(hubDot.noteIds)) hubDot.noteIds = [];
+        if (!hubDot.noteIds.includes(note.id)) {
+          hubDot.noteIds.push(note.id);
+          this.saveDot(hubDot);
+        }
+      }
     }
 
     return updated;
@@ -108,25 +141,99 @@ export class StorageEngine {
 
   deleteNote(noteId) {
     const note = this.getNote(noteId);
-    if (note) {
-      // Remove from dot noteIds array
-      const dot = this.getDot(note.dotId);
-      if (dot && Array.isArray(dot.noteIds)) {
-        dot.noteIds = dot.noteIds.filter((id) => id !== noteId);
-        this.saveDot(dot);
+    if (note && note.dotId) {
+      const parentDot = this.getDot(note.dotId);
+      if (parentDot && Array.isArray(parentDot.noteIds)) {
+        parentDot.noteIds = parentDot.noteIds.filter((id) => id !== noteId);
+        this.saveDot(parentDot);
       }
-    } else {
-      const dots = this.getDots();
-      for (const dot of dots) {
-        if (Array.isArray(dot.noteIds) && dot.noteIds.includes(noteId)) {
-          dot.noteIds = dot.noteIds.filter((id) => id !== noteId);
-          this.saveDot(dot);
-        }
-      }
+    }
+    const hubDot = this.getDot('hub-dot');
+    if (hubDot && Array.isArray(hubDot.noteIds)) {
+      hubDot.noteIds = hubDot.noteIds.filter((id) => id !== noteId);
+      this.saveDot(hubDot);
     }
 
     this.store.delete(`notes.${noteId}`);
     return true;
+  }
+
+  // Migration to V3 (Single Hub architecture)
+  migrateToV3() {
+    // 1. Back up pre-migration data
+    this.store.set('backup_pre_hub_only', {
+      settings: this.store.get('settings'),
+      dots: this.store.get('dots'),
+      notes: this.store.get('notes'),
+      timestamp: Date.now()
+    });
+
+    const settings = this.getSettings();
+    const dotsObj = this.store.get('dots') || {};
+    const notesObj = this.store.get('notes') || {};
+    const allDots = Object.values(dotsObj);
+    const allNotes = Object.values(notesObj);
+
+    // 2. Identify or create the Hub dot
+    let hubDot = allDots.find((d) => d.isHub || d.id === 'hub-dot');
+    if (!hubDot) {
+      hubDot = {
+        id: 'hub-dot',
+        isHub: true,
+        position: { x: 50, y: 50 },
+        hubEdge: 'right',
+        hubColor: '#4f46e5',
+        hubOpacity: 0.92,
+        hubBorderStyle: 'solid',
+        sortOrder: 'newest',
+        showCompletedChecklists: true,
+        noteIds: []
+      };
+    }
+    const allHubNoteIds = new Set(Array.isArray(hubDot.noteIds) ? hubDot.noteIds : []);
+
+    // 3. For each non-hub dot, copy style overrides to its notes
+    const nonHubDots = allDots.filter((d) => !d.isHub && d.id !== 'hub-dot');
+    for (const dot of nonHubDots) {
+      const dotNotes = allNotes.filter(
+        (n) => n.dotId === dot.id || (Array.isArray(dot.noteIds) && dot.noteIds.includes(n.id))
+      );
+      for (const note of dotNotes) {
+        note.color = note.color || dot.color || settings.defaultDotColor || '#3b82f6';
+        note.opacity = note.opacity ?? dot.opacity ?? settings.defaultOpacity ?? 0.88;
+        note.textSize = note.textSize ?? dot.textSize ?? settings.defaultTextSize ?? 14;
+        note.textColor = note.textColor || dot.textColor || settings.defaultTextColor || '#ffffff';
+        note.blurRadius = note.blurRadius ?? dot.blurRadius ?? settings.defaultBlurRadius ?? 12;
+        note.dotId = 'hub-dot';
+
+        notesObj[note.id] = note;
+        allHubNoteIds.add(note.id);
+      }
+    }
+
+    // Ensure any remaining notes point to hub-dot
+    for (const note of Object.values(notesObj)) {
+      if (!note.dotId || note.dotId !== 'hub-dot') {
+        note.dotId = 'hub-dot';
+      }
+      allHubNoteIds.add(note.id);
+    }
+
+    // 4. Update Hub dot with all noteIds and keep ONLY hub-dot in dots
+    hubDot.noteIds = Array.from(allHubNoteIds);
+    this.store.set('dots', { 'hub-dot': hubDot });
+    this.store.set('notes', notesObj);
+
+    // 5. Upgrade settings to schemaVersion 3 and strip obsolete fields
+    const updatedSettings = {
+      ...DefaultSettings,
+      ...settings,
+      schemaVersion: 3
+    };
+    delete updatedSettings.displayMode;
+    delete updatedSettings.showPlusButton;
+    delete updatedSettings.plusButtonCorner;
+    this.store.set('settings', updatedSettings);
   }
 
   // Migration V1 to V2

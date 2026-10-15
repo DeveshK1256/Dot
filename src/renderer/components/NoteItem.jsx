@@ -233,6 +233,10 @@ export function NoteItem({ note, onUpdate, onDelete }) {
             value={text}
             onChange={handleTextChange}
             onBlur={handleBlur}
+            style={{
+              fontSize: note.textSize ? `${note.textSize}px` : undefined,
+              color: note.textColor || undefined
+            }}
           />
         ) : (
           <Checklist items={note.checklist || []} onChange={handleChecklistChange} />

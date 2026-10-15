@@ -3,7 +3,7 @@
  */
 
 export const DefaultSettings = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   defaultDotColor: '#3b82f6',
   defaultOpacity: 0.88,
   defaultBlurRadius: 12,
@@ -14,10 +14,7 @@ export const DefaultSettings = {
   autoCloseEmptyDot: true,
   deadlineReminderWindowsMin: [1440, 60, 15, 0],
   quickCaptureShortcut: 'CommandOrControl+Shift+Space',
-  ghostModeShortcut: 'CommandOrControl+Alt+G',
-  showPlusButton: true,
-  plusButtonCorner: 'bottom-right', // 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
-  displayMode: 'all' // 'all' | 'hubOnly'
+  ghostModeShortcut: 'CommandOrControl+Alt+G'
 };
 
 export const HubSettingsSchema = {
@@ -49,10 +46,10 @@ export function validateHubSettings(settings) {
 export function validateDot(dot) {
   if (!dot || typeof dot !== 'object') throw new Error('Dot must be an object');
   if (typeof dot.id !== 'string' || !dot.id) throw new Error('Invalid or missing dot.id');
-  if (!dot.position || typeof dot.position.x !== 'number' || typeof dot.position.y !== 'number') {
+  if (dot.position && (typeof dot.position.x !== 'number' || typeof dot.position.y !== 'number')) {
     throw new Error('Dot position must contain numeric x and y');
   }
-  if (!Array.isArray(dot.noteIds)) throw new Error('Dot noteIds must be an array');
+  if (dot.noteIds !== undefined && !Array.isArray(dot.noteIds)) throw new Error('Dot noteIds must be an array');
   if (dot.opacity !== undefined && (typeof dot.opacity !== 'number' || dot.opacity < 0.1 || dot.opacity > 1.0)) {
     throw new Error('Dot opacity must be between 0.1 and 1.0');
   }
@@ -70,7 +67,9 @@ export const ALERT_WINDOW_PRESETS = [
 export function validateNote(note) {
   if (!note || typeof note !== 'object') throw new Error('Note must be an object');
   if (typeof note.id !== 'string' || !note.id) throw new Error('Invalid or missing note.id');
-  if (typeof note.dotId !== 'string' || !note.dotId) throw new Error('Invalid or missing note.dotId');
+  if (note.dotId !== undefined && typeof note.dotId !== 'string') {
+    throw new Error('Invalid note.dotId');
+  }
   if (note.checklist !== undefined && !Array.isArray(note.checklist)) {
     throw new Error('Checklist must be an array if provided');
   }
@@ -80,14 +79,20 @@ export function validateNote(note) {
   if (note.alertWindowsMin !== undefined && !Array.isArray(note.alertWindowsMin)) {
     throw new Error('alertWindowsMin must be an array if provided');
   }
+  if (note.opacity !== undefined && (typeof note.opacity !== 'number' || note.opacity < 0.1 || note.opacity > 1.0)) {
+    throw new Error('Note opacity must be between 0.1 and 1.0');
+  }
+  if (note.textSize !== undefined && (typeof note.textSize !== 'number' || note.textSize < 8 || note.textSize > 36)) {
+    throw new Error('Note textSize must be a number between 8 and 36');
+  }
+  if (note.blurRadius !== undefined && typeof note.blurRadius !== 'number') {
+    throw new Error('Note blurRadius must be a number');
+  }
   return true;
 }
 
 export function validateSettings(settings) {
   if (!settings || typeof settings !== 'object') throw new Error('Settings must be an object');
   if (typeof settings.schemaVersion !== 'number') throw new Error('Invalid settings schemaVersion');
-  if (settings.displayMode !== undefined && !['all', 'hubOnly'].includes(settings.displayMode)) {
-    throw new Error("Settings displayMode must be 'all' or 'hubOnly'");
-  }
   return true;
 }

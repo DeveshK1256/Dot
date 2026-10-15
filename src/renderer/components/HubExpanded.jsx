@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Pin, Plus, ArrowLeft, Layers, CheckSquare, Clock, ExternalLink, Settings } from 'lucide-react';
+import { X, Pin, Plus, ArrowLeft, Layers, CheckSquare, Clock, Settings, Palette } from 'lucide-react';
 import { NoteItem } from './NoteItem.jsx';
 import { HubSettingsModal } from './HubSettingsModal.jsx';
+import { NoteSettingsModal } from './DotSettingsModal.jsx';
 
 export function HubExpanded({
   dot,
@@ -12,11 +13,10 @@ export function HubExpanded({
   onSaveDotSettings,
   onResetDotSettings
 }) {
-  const [dots, setDots] = useState([]);
   const [notes, setNotes] = useState([]);
   const [selectedNoteId, setSelectedNoteId] = useState(null);
-  const [displayMode, setDisplayMode] = useState(globalSettings?.displayMode || 'all');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isNoteSettingsOpen, setIsNoteSettingsOpen] = useState(false);
 
   const effectiveOpacity = dot?.hubOpacity ?? dot?.opacity ?? globalSettings?.defaultOpacity ?? 0.92;
   const effectiveBlurRadius = dot?.blurRadius ?? globalSettings?.defaultBlurRadius ?? 12;
@@ -24,22 +24,14 @@ export function HubExpanded({
   const borderStyle = dot?.hubBorderStyle || 'solid';
   const border = borderStyle === 'none' ? 'none' : `1px ${borderStyle} rgba(255, 255, 255, 0.2)`;
 
-  // Fetch dots and notes
+  // Fetch notes
   const refreshData = async () => {
     if (!window.electronAPI) return;
     try {
-      const [allDots, allNotes, settings] = await Promise.all([
-        window.electronAPI.getDots(),
-        window.electronAPI.getAllNotes(),
-        window.electronAPI.getSettings()
-      ]);
-      setDots(allDots || []);
+      const allNotes = await window.electronAPI.getAllNotes();
       setNotes(allNotes || []);
-      if (settings?.displayMode) {
-        setDisplayMode(settings.displayMode);
-      }
     } catch (err) {
-      console.error('Failed to refresh hub data:', err);
+      console.error('Failed to refresh hub notes:', err);
     }
   };
 
@@ -47,18 +39,6 @@ export function HubExpanded({
     refreshData();
 
     if (window.electronAPI) {
-      const unsubDot = window.electronAPI.onDotUpdated((updatedDot) => {
-        if (!updatedDot) return;
-        setDots((prev) => {
-          const idx = prev.findIndex((d) => d.id === updatedDot.id);
-          if (idx !== -1) {
-            const next = [...prev];
-            next[idx] = updatedDot;
-            return next;
-          }
-          return [...prev, updatedDot];
-        });
-      });
       const unsubNote = window.electronAPI.onNoteUpdated((updatedNote) => {
         setNotes((prev) => {
           const idx = prev.findIndex((n) => n.id === updatedNote.id);
@@ -70,40 +50,29 @@ export function HubExpanded({
           return [updatedNote, ...prev];
         });
       });
+
       const unsubNoteDel = window.electronAPI.onNoteDeleted((deletedNoteId) => {
         setNotes((prev) => prev.filter((n) => n.id !== deletedNoteId));
         if (selectedNoteId === deletedNoteId) {
           setSelectedNoteId(null);
         }
       });
-      const unsubSettings = window.electronAPI.onSettingsUpdated((newSettings) => {
-        if (newSettings?.displayMode) {
-          setDisplayMode(newSettings.displayMode);
-        }
-      });
-      const unsubDisplayMode = window.electronAPI.onDisplayModeChanged((mode) => {
-        setDisplayMode(mode);
-      });
+
+      const unsubFocus = window.electronAPI.onFocusInput ? window.electronAPI.onFocusInput(() => {
+        handleCreateNewNote();
+      }) : () => {};
 
       return () => {
-        unsubDot();
         unsubNote();
         unsubNoteDel();
-        unsubSettings();
-        unsubDisplayMode();
+        unsubFocus();
       };
     }
-  }, [selectedNoteId]);
-
-  // Map notes to their parent dots
-  const rawNoteList = notes.filter((n) => {
-    const parentDot = dots.find((d) => d.id === n.dotId);
-    return parentDot && !parentDot.isHub;
-  });
+  }, [selectedNoteId, globalSettings]);
 
   // Apply configurable sort order
   const sortOrder = dot?.sortOrder || 'newest';
-  const noteList = [...rawNoteList].sort((a, b) => {
+  const noteList = [...notes].sort((a, b) => {
     if (sortOrder === 'oldest') {
       return (a.createdAt || 0) - (b.createdAt || 0);
     }
@@ -118,20 +87,32 @@ export function HubExpanded({
   const activeNote = notes.find((n) => n.id === selectedNoteId);
 
   const handleRowClick = (note) => {
-    if (displayMode === 'hubOnly') {
-      // In hubOnly mode, open note inline
-      setSelectedNoteId(note.id);
-    } else {
-      // In all mode, bring that floating dot to front
-      if (window.electronAPI) {
-        window.electronAPI.bringDotToFront(note.dotId);
-      }
-    }
+    setSelectedNoteId(note.id);
   };
 
-  const handleCreateNewDot = () => {
+  const handleCreateNewNote = async () => {
+    const newId = `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newNote = {
+      id: newId,
+      dotId: 'hub-dot',
+      text: '',
+      checklist: [],
+      deadline: null,
+      firedReminders: [],
+      color: globalSettings?.defaultDotColor || '#3b82f6',
+      opacity: globalSettings?.defaultOpacity ?? 0.88,
+      textSize: globalSettings?.defaultTextSize ?? 14,
+      textColor: globalSettings?.defaultTextColor ?? '#ffffff',
+      blurRadius: globalSettings?.defaultBlurRadius ?? 12,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    setNotes((prev) => [newNote, ...prev]);
+    setSelectedNoteId(newId);
+
     if (window.electronAPI) {
-      window.electronAPI.spawnDotFromPlusButton();
+      await window.electronAPI.saveNote(newNote);
     }
   };
 
@@ -194,20 +175,20 @@ export function HubExpanded({
               fontSize: '11px',
               padding: '1px 6px',
               borderRadius: '10px',
-              background: displayMode === 'hubOnly' ? '#4338ca' : 'rgba(255,255,255,0.15)',
+              background: '#4338ca',
               color: '#ffffff',
               fontWeight: 500
             }}
           >
-            {displayMode === 'hubOnly' ? 'Hub Only' : `${noteList.length} notes`}
+            {noteList.length} {noteList.length === 1 ? 'note' : 'notes'}
           </span>
         </div>
 
         <div className="header-actions">
           <button
             className="icon-btn"
-            title="Create New Dot"
-            onClick={handleCreateNewDot}
+            title="Create New Note"
+            onClick={handleCreateNewNote}
             style={{ color: '#ffffff' }}
           >
             <Plus size={15} />
@@ -247,15 +228,18 @@ export function HubExpanded({
           flexDirection: 'column'
         }}
       >
-        {activeNote && displayMode === 'hubOnly' ? (
+        {activeNote ? (
           /* Inline Note Editor View */
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                 <button
                   className="icon-btn"
-                  title="Back to Hub List"
-                  onClick={() => setSelectedNoteId(null)}
+                  title="Back to All Notes"
+                  onClick={() => {
+                    setSelectedNoteId(null);
+                    setIsNoteSettingsOpen(false);
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -268,24 +252,28 @@ export function HubExpanded({
                   }}
                 >
                   <ArrowLeft size={13} />
-                  <span>All Notes</span>
+                  <span>Notes</span>
                 </button>
                 <span style={{ fontSize: '11px', opacity: 0.5 }}>|</span>
-                <span style={{ fontSize: '11px', opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '170px' }}>
+                <span style={{ fontSize: '11px', opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
                   {activeNote.text ? activeNote.text.split('\n')[0] : 'Untitled Note'}
                 </span>
               </div>
               <button
                 className="icon-btn"
-                title="Pop out as Floating Dot"
-                onClick={() => {
-                  if (window.electronAPI) {
-                    window.electronAPI.bringDotToFront(activeNote.dotId);
-                  }
+                title="Note Style & Colors"
+                onClick={() => setIsNoteSettingsOpen(!isNoteSettingsOpen)}
+                style={{
+                  color: activeNote.color || '#93c5fd',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
                 }}
-                style={{ color: '#93c5fd', background: 'none', border: 'none', cursor: 'pointer' }}
               >
-                <ExternalLink size={13} />
+                <Palette size={13} />
               </button>
             </div>
 
@@ -296,24 +284,64 @@ export function HubExpanded({
                 onDelete={handleDeleteInlineNote}
               />
             </div>
+
+            {isNoteSettingsOpen && (
+              <NoteSettingsModal
+                note={activeNote}
+                globalSettings={globalSettings}
+                onSave={async (styledNote) => {
+                  await handleSaveInlineNote(styledNote);
+                  setIsNoteSettingsOpen(false);
+                }}
+                onClose={() => setIsNoteSettingsOpen(false)}
+                onReset={async () => {
+                  const resetNote = {
+                    ...activeNote,
+                    color: globalSettings?.defaultDotColor || '#3b82f6',
+                    opacity: globalSettings?.defaultOpacity ?? 0.88,
+                    textSize: globalSettings?.defaultTextSize ?? 14,
+                    textColor: globalSettings?.defaultTextColor ?? '#ffffff',
+                    blurRadius: globalSettings?.defaultBlurRadius ?? 12
+                  };
+                  await handleSaveInlineNote(resetNote);
+                  setIsNoteSettingsOpen(false);
+                }}
+              />
+            )}
           </div>
         ) : (
           /* Notes List View */
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div
+            {/* New Note Button at Top of List */}
+            <button
+              onClick={handleCreateNewNote}
               style={{
-                fontSize: '11px',
-                color: 'rgba(255,255,255,0.7)',
-                marginBottom: '8px',
+                width: '100%',
+                padding: '7px 10px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px dashed rgba(255, 255, 255, 0.25)',
+                borderRadius: '8px',
+                cursor: 'pointer',
                 display: 'flex',
-                justifyContent: 'space-between'
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                color: '#93c5fd',
+                fontSize: '12px',
+                fontWeight: 500,
+                marginBottom: '8px',
+                transition: 'background 0.15s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.16)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
               }}
             >
-              <span>{displayMode === 'hubOnly' ? 'Select a note to edit inline:' : 'Click a note to bring to front:'}</span>
-              {displayMode === 'hubOnly' && (
-                <span style={{ color: '#818cf8', fontSize: '10px' }}>[Floating Dots Hidden]</span>
-              )}
-            </div>
+              <Plus size={14} />
+              <span>Create New Note</span>
+            </button>
 
             <div
               style={{
@@ -339,29 +367,10 @@ export function HubExpanded({
                   }}
                 >
                   <span>No notes created yet.</span>
-                  <button
-                    onClick={handleCreateNewDot}
-                    style={{
-                      background: '#4f46e5',
-                      border: 'none',
-                      borderRadius: '6px',
-                      color: '#ffffff',
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <Plus size={14} />
-                    <span>Create First Dot</span>
-                  </button>
                 </div>
               ) : (
                 noteList.map((note) => {
-                  const parentDot = dots.find((d) => d.id === note.dotId);
-                  const dotColor = parentDot?.color || '#3b82f6';
+                  const noteColor = note.color || '#3b82f6';
                   const title = note.text ? note.text.split('\n')[0] : 'Empty note';
                   const hasChecklist = note.checklist && note.checklist.length > 0;
                   const completedChecks = hasChecklist
@@ -375,7 +384,6 @@ export function HubExpanded({
                       style={{
                         padding: '8px 10px',
                         background: 'rgba(255,255,255,0.06)',
-                        hover: { background: 'rgba(255,255,255,0.12)' },
                         borderRadius: '8px',
                         cursor: 'pointer',
                         display: 'flex',
@@ -398,14 +406,14 @@ export function HubExpanded({
                             width: '10px',
                             height: '10px',
                             borderRadius: '50%',
-                            backgroundColor: dotColor,
+                            backgroundColor: noteColor,
                             flexShrink: 0
                           }}
                         />
                         <span
                           style={{
-                            fontSize: '12px',
-                            color: '#ffffff',
+                            fontSize: note.textSize ? `${note.textSize}px` : '12px',
+                            color: note.textColor || '#ffffff',
                             fontWeight: 500,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',

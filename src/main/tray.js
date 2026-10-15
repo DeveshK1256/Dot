@@ -63,36 +63,11 @@ export function setupTray({ windowManager, storage, onOpenSettings }) {
   }
 
   function buildMenu() {
-    const settings = storage ? storage.getSettings() : { displayMode: 'all' };
-    const isHubOnly = settings.displayMode === 'hubOnly';
-
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: isHubOnly ? 'Display Mode: Hub Only' : 'Display Mode: Show All Dots',
-        sublabel: isHubOnly ? 'Click to show all floating dots' : 'Click to hide dots & use Hub only',
-        click: () => {
-          if (!storage) return;
-          const currentSettings = storage.getSettings();
-          const nextMode = currentSettings.displayMode === 'hubOnly' ? 'all' : 'hubOnly';
-          const updated = { ...currentSettings, displayMode: nextMode };
-          storage.saveSettings(updated);
-          windowManager.broadcast('settings-updated', updated);
-          windowManager.applyDisplayMode(nextMode);
-          buildMenu();
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'New Dot at Cursor',
+        label: 'New Note',
         accelerator: 'CommandOrControl+Shift+Space',
-        click: () => windowManager.spawnDotAtCursor()
-      },
-      {
-        label: 'Show All Hidden Dots',
-        click: () => {
-          windowManager.showAllHiddenDots();
-          buildMenu();
-        }
+        click: () => windowManager.openNewNoteInHub()
       },
       {
         label: 'Toggle Ghost Mode (Pass-Through)',
@@ -101,7 +76,7 @@ export function setupTray({ windowManager, storage, onOpenSettings }) {
       },
       { type: 'separator' },
       {
-        label: 'Settings...',
+        label: 'Hub Settings...',
         click: onOpenSettings
       },
       { type: 'separator' },

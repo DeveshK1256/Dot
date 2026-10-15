@@ -25,7 +25,7 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    windowManager.spawnDotAtCursor();
+    windowManager.openNewNoteInHub();
   });
 
   app.whenReady().then(() => {
@@ -45,7 +45,7 @@ if (!gotTheLock) {
     const settings = storage.getSettings();
     if (settings.quickCaptureShortcut) {
       globalShortcut.register(settings.quickCaptureShortcut, () => {
-        windowManager.spawnDotAtCursor();
+        windowManager.openNewNoteInHub();
       });
     }
     if (settings.ghostModeShortcut) {
@@ -54,29 +54,11 @@ if (!gotTheLock) {
       });
     }
 
-    // Ensure Hub Dot exists
+    // Ensure Hub Dot exists and create the single Hub window
     windowManager.ensureHubDot();
+    windowManager.createHubWindow();
 
-    // Restore existing dots or spawn default one
-    const allDots = storage.getDots();
-    for (const dot of allDots) {
-      windowManager.createDotWindow(dot);
-    }
-    const nonHubDots = allDots.filter((d) => !d.isHub && d.id !== 'hub-dot');
-    if (nonHubDots.length === 0) {
-      windowManager.spawnNewDot({ x: 140, y: 140 });
-    }
-
-    // Apply saved displayMode (persists across restarts)
-    windowManager.applyDisplayMode(settings.displayMode || 'all');
-
-    // Initialize cluster state for existing dots
-    windowManager.updateClusters();
-
-    // Create persistent "+" button window
-    windowManager.createPlusButtonWindow();
-
-    // Setup IPC Handlers with robust try/catch wrapping
+    // Setup IPC Handlers
     ipcMain.on('set-dot-state', (_event, { dotId, state }) => {
       try {
         windowManager.setDotState(dotId, state);
@@ -85,61 +67,11 @@ if (!gotTheLock) {
       }
     });
 
-    ipcMain.on('close-dot-window', (_event, dotId) => {
+    ipcMain.on('open-new-note', () => {
       try {
-        windowManager.closeDotWindow(dotId);
+        windowManager.openNewNoteInHub();
       } catch (err) {
-        console.error('[IPC ERROR close-dot-window]:', err);
-      }
-    });
-
-    ipcMain.on('hide-dot-window', (_event, dotId) => {
-      try {
-        windowManager.hideDotWindow(dotId);
-      } catch (err) {
-        console.error('[IPC ERROR hide-dot-window]:', err);
-      }
-    });
-
-    ipcMain.on('spawn-dot-from-plus-button', () => {
-      try {
-        windowManager.spawnDotFromPlusButton();
-      } catch (err) {
-        console.error('[IPC ERROR spawn-dot-from-plus-button]:', err);
-      }
-    });
-
-    ipcMain.on('bring-dot-to-front', (_event, dotId) => {
-      try {
-        console.log(`[IPC bring-dot-to-front] Opening dot: ${dotId}`);
-        windowManager.bringDotToFront(dotId);
-      } catch (err) {
-        console.error(`[IPC ERROR bring-dot-to-front ${dotId}]:`, err);
-      }
-    });
-
-    ipcMain.on('set-cluster-state', (_e, { clusterId, state }) => {
-      try {
-        windowManager.setClusterState(clusterId, state);
-      } catch (err) {
-        console.error('[IPC ERROR set-cluster-state]:', err);
-      }
-    });
-
-    ipcMain.handle('get-cluster-data', (_e, clusterId) => {
-      try {
-        return windowManager.getClusterData(clusterId);
-      } catch (err) {
-        console.error('[IPC ERROR get-cluster-data]:', err);
-        return null;
-      }
-    });
-
-    ipcMain.on('uncluster', (_e, clusterId) => {
-      try {
-        windowManager.uncluster(clusterId);
-      } catch (err) {
-        console.error('[IPC ERROR uncluster]:', err);
+        console.error('[IPC ERROR open-new-note]:', err);
       }
     });
 
@@ -156,13 +88,6 @@ if (!gotTheLock) {
       try {
         const saved = storage.saveSettings(s);
         windowManager.broadcast('settings-updated', saved);
-        windowManager.updatePlusButtonWindow(saved);
-        if (s.displayMode !== undefined) {
-          windowManager.applyDisplayMode(s.displayMode);
-          if (tray && tray.updateDisplayMode) {
-            tray.updateDisplayMode();
-          }
-        }
         return saved;
       } catch (err) {
         console.error('[IPC ERROR storage:saveSettings]:', err);
