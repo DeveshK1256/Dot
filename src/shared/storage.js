@@ -108,13 +108,21 @@ export class StorageEngine {
 
   deleteNote(noteId) {
     const note = this.getNote(noteId);
-    if (!note) return false;
-
-    // Remove from dot noteIds array
-    const dot = this.getDot(note.dotId);
-    if (dot && Array.isArray(dot.noteIds)) {
-      dot.noteIds = dot.noteIds.filter((id) => id !== noteId);
-      this.saveDot(dot);
+    if (note) {
+      // Remove from dot noteIds array
+      const dot = this.getDot(note.dotId);
+      if (dot && Array.isArray(dot.noteIds)) {
+        dot.noteIds = dot.noteIds.filter((id) => id !== noteId);
+        this.saveDot(dot);
+      }
+    } else {
+      const dots = this.getDots();
+      for (const dot of dots) {
+        if (Array.isArray(dot.noteIds) && dot.noteIds.includes(noteId)) {
+          dot.noteIds = dot.noteIds.filter((id) => id !== noteId);
+          this.saveDot(dot);
+        }
+      }
     }
 
     this.store.delete(`notes.${noteId}`);

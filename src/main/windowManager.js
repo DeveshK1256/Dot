@@ -45,18 +45,36 @@ export class WindowManager {
   ensureHubDot() {
     const dots = this.storage.getDots();
     const existing = dots.find((d) => d.isHub || d.id === 'hub-dot');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { x: workX, y: workY, width: workW, height: workH } = primaryDisplay.workArea;
+
     if (existing) {
       this.hubDotId = existing.id;
-      // Ensure missing HubSettingsSchema fields are populated for backward compatibility
       let updated = false;
-      const hubDot = { ...existing };
+      const hubDot = { ...existing, isHub: true };
       for (const [k, v] of Object.entries(HubSettingsSchema)) {
         if (hubDot[k] === undefined) {
           hubDot[k] = v;
           updated = true;
         }
       }
-      if (updated) {
+      // Startup safety check: clamp position if invalid / off-screen / NaN / negative
+      if (
+        !hubDot.position ||
+        typeof hubDot.position.x !== 'number' ||
+        typeof hubDot.position.y !== 'number' ||
+        isNaN(hubDot.position.x) ||
+        isNaN(hubDot.position.y) ||
+        hubDot.position.x < workX ||
+        hubDot.position.x > workX + workW - 48 ||
+        hubDot.position.y < workY ||
+        hubDot.position.y > workY + workH - 48
+      ) {
+        hubDot.position = { x: workX + 50, y: workY + 50 };
+        updated = true;
+      }
+
+      if (updated || !existing.isHub) {
         this.storage.saveDot(hubDot);
       }
       return hubDot;
@@ -65,7 +83,7 @@ export class WindowManager {
     const hubDot = {
       id: 'hub-dot',
       isHub: true,
-      position: { x: 50, y: 50 },
+      position: { x: workX + 50, y: workY + 50 },
       color: HubSettingsSchema.hubColor,
       opacity: HubSettingsSchema.hubOpacity,
       blurBackground: true,
@@ -886,14 +904,25 @@ export class WindowManager {
 
   updateHubPosition(hubDot) {
     const settings = this.storage.getSettings();
+    const win = this.windows.get(hubDot.id || this.hubDotId);
+    if (!win || win.isDestroyed()) return;
+
     if (settings.displayMode === 'hubOnly') {
-      const win = this.windows.get(hubDot.id || this.hubDotId);
-      if (win && !win.isDestroyed()) {
-        const edge = hubDot.hubEdge || 'right';
-        const bounds = win.getBounds();
-        const isExpanded = bounds.width > 20 && bounds.height > 20;
-        win.setBounds(this.getHubEdgeBounds(edge, isExpanded));
-      }
+      const edge = hubDot.hubEdge || 'right';
+      const bounds = win.getBounds();
+      const isExpanded = bounds.width > 20 && bounds.height > 20;
+      win.setBounds(this.getHubEdgeBounds(edge, isExpanded));
+      win.show();
+    } else {
+      // In 'all' mode: make sure hub is on-screen
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { x: workX, y: workY, width: workW, height: workH } = primaryDisplay.workArea;
+      let x = hubDot.position?.x ?? (workX + 50);
+      let y = hubDot.position?.y ?? (workY + 50);
+      if (isNaN(x) || x < workX || x > workX + workW - 48) x = workX + 50;
+      if (isNaN(y) || y < workY || y > workY + workH - 48) y = workY + 50;
+      win.setPosition(x, y);
+      win.show();
     }
   }
 

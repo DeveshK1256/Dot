@@ -167,14 +167,15 @@ export function HubExpanded({
         height: '100%',
         maxHeight: '380px',
         position: 'relative',
-        border: border
+        border: border || '1px solid rgba(255, 255, 255, 0.2)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25)'
       }}
     >
       {/* Background layer */}
       <div
         className="card-bg-layer"
         style={{
-          backgroundColor: effectiveColor,
+          background: `linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.04) 100%), ${effectiveColor}`,
           opacity: effectiveOpacity,
           backdropFilter: `blur(${effectiveBlurRadius}px)`,
           WebkitBackdropFilter: `blur(${effectiveBlurRadius}px)`

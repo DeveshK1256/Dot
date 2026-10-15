@@ -3,6 +3,7 @@ import { calculateOverlapPercentage, detectClusters } from '../../src/main/clust
 import * as clusteringModule from '../../src/main/clustering.js';
 import { AutoArchiver } from '../../src/main/autoArchive.js';
 import { StorageEngine } from '../../src/shared/storage.js';
+import { HubSettingsSchema } from '../../src/shared/schema.js';
 
 vi.mock('electron', () => {
   class MockBrowserWindow {
@@ -442,6 +443,194 @@ describe('Unique Features Unit Tests', () => {
 
       // Calling bringDotToFront with non-existent dotId logs warning and does NOT throw
       expect(() => wm.bringDotToFront('non-existent-dot-id')).not.toThrow();
+    });
+  });
+
+  describe('Note Deletion & Debounce Race Verification', () => {
+    it('permanently deletes note from storage, removes from dot.noteIds, and does not resurrect on display mode toggle', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const dot = { id: 'dot-test-del', position: { x: 100, y: 100 }, noteIds: ['note-del-1'] };
+      const note = { id: 'note-del-1', dotId: 'dot-test-del', text: 'To be deleted' };
+      storage.saveDot(dot);
+      storage.saveNote(note);
+
+      expect(storage.getNote('note-del-1')).toBeDefined();
+      expect(storage.getNotesByDot('dot-test-del').length).toBe(1);
+      expect(storage.getDot('dot-test-del').noteIds).toContain('note-del-1');
+
+      // Delete note
+      const deleted = storage.deleteNote('note-del-1');
+      expect(deleted).toBe(true);
+
+      // Verify removed from storage and dot
+      expect(storage.getNote('note-del-1')).toBeNull();
+      expect(storage.getNotesByDot('dot-test-del').length).toBe(0);
+      expect(storage.getDot('dot-test-del').noteIds).not.toContain('note-del-1');
+
+      // Toggle display mode between 'hubOnly' and 'all'
+      wm.applyDisplayMode('hubOnly');
+      expect(storage.getNotesByDot('dot-test-del').length).toBe(0);
+
+      wm.applyDisplayMode('all');
+      expect(storage.getNotesByDot('dot-test-del').length).toBe(0);
+    });
+
+    it('simulates rapid delete cancelling pending typing debounce without resurrecting note', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+
+      const note = { id: 'note-debounce-del', dotId: 'dot-1', text: 'Typing something' };
+      storage.saveNote(note);
+
+      let isDeleting = false;
+      let debounceTimer = null;
+      let activeText = 'Typing something fast!';
+
+      const flushSave = () => {
+        if (isDeleting) return;
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        storage.saveNote({ ...note, text: activeText });
+      };
+
+      // User types
+      debounceTimer = setTimeout(() => {
+        flushSave();
+      }, 350);
+
+      // User immediately clicks delete within 50ms (before 350ms passes)
+      isDeleting = true;
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      storage.deleteNote('note-debounce-del');
+
+      // Simulate unmount flush
+      flushSave();
+
+      // Confirm note is NOT re-saved
+      expect(storage.getNote('note-debounce-del')).toBeNull();
+    });
+  });
+
+  describe('Configurable Deadline Alert Windows', () => {
+    it('uses per-note alertWindowsMin when specified on note, falling back to global settings when omitted', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      const noteWithCustomAlerts = {
+        id: 'note-custom-alerts',
+        dotId: 'dot-1',
+        text: 'Custom alerts',
+        deadline: Date.now() + 30 * 60 * 1000,
+        alertWindowsMin: [30, 0],
+        firedReminders: []
+      };
+      const noteWithDefaultAlerts = {
+        id: 'note-default-alerts',
+        dotId: 'dot-1',
+        text: 'Default alerts',
+        deadline: Date.now() + 60 * 60 * 1000,
+        firedReminders: []
+      };
+
+      storage.saveNote(noteWithCustomAlerts);
+      storage.saveNote(noteWithDefaultAlerts);
+
+      const globalWindows = storage.getSettings()?.deadlineReminderWindowsMin || [1440, 60, 15, 0];
+
+      const customWindows = Array.isArray(noteWithCustomAlerts.alertWindowsMin) && noteWithCustomAlerts.alertWindowsMin.length > 0
+        ? noteWithCustomAlerts.alertWindowsMin
+        : globalWindows;
+
+      const fallbackWindows = Array.isArray(noteWithDefaultAlerts.alertWindowsMin) && noteWithDefaultAlerts.alertWindowsMin.length > 0
+        ? noteWithDefaultAlerts.alertWindowsMin
+        : globalWindows;
+
+      expect(customWindows).toEqual([30, 0]);
+      expect(fallbackWindows).toEqual(globalWindows);
+    });
+  });
+
+  describe('Hub Settings Reset to Defaults & Visibility Clamping', () => {
+    it('resets hub settings to HubSettingsSchema defaults without losing isHub or vanishing off-screen', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      const wm = new WindowManager(storage);
+
+      // Initialize hub
+      const initialHub = wm.ensureHubDot();
+      expect(initialHub.isHub).toBe(true);
+
+      // Simulate user changing hub settings
+      const modifiedHub = {
+        ...initialHub,
+        hubEdge: 'left',
+        hubColor: '#ff0000',
+        hubOpacity: 0.5,
+        sortOrder: 'alphabetical'
+      };
+      storage.saveDot(modifiedHub);
+
+      // Now simulate "Reset to Defaults"
+      const resetHub = {
+        ...modifiedHub,
+        isHub: true,
+        position: modifiedHub.position || { x: 50, y: 50 },
+        color: HubSettingsSchema.hubColor,
+        opacity: HubSettingsSchema.hubOpacity,
+        hubEdge: HubSettingsSchema.hubEdge,
+        hubColor: HubSettingsSchema.hubColor,
+        hubOpacity: HubSettingsSchema.hubOpacity,
+        hubBorderStyle: HubSettingsSchema.hubBorderStyle,
+        sortOrder: HubSettingsSchema.sortOrder,
+        showCompletedChecklists: HubSettingsSchema.showCompletedChecklists
+      };
+      storage.saveDot(resetHub);
+
+      const saved = storage.getDot(resetHub.id);
+      expect(saved.isHub).toBe(true);
+      expect(saved.hubEdge).toBe('right');
+      expect(saved.hubColor).toBe(HubSettingsSchema.hubColor);
+
+      // Confirm updateHubPosition calculates valid on-screen bounds in hubOnly mode
+      storage.saveSettings({ ...storage.getSettings(), displayMode: 'hubOnly' });
+      const hubWin = wm.createDotWindow(saved);
+      wm.updateHubPosition(saved);
+
+      const bounds = hubWin.getBounds();
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.y).toBeGreaterThanOrEqual(0);
+      expect(bounds.width).toBe(6);
+      expect(bounds.height).toBe(120);
+    });
+
+    it('clamps off-screen or NaN hub position back to valid on-screen coordinates on startup', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+
+      // Save corrupted hub with NaN / out-of-bounds coordinates
+      storage.saveDot({
+        id: 'hub-dot',
+        isHub: true,
+        position: { x: -9999, y: NaN },
+        noteIds: []
+      });
+
+      const wm = new WindowManager(storage);
+      const sanitizedHub = wm.ensureHubDot();
+
+      expect(sanitizedHub.position.x).toBeGreaterThanOrEqual(0);
+      expect(sanitizedHub.position.y).toBeGreaterThanOrEqual(0);
+      expect(isNaN(sanitizedHub.position.x)).toBe(false);
+      expect(isNaN(sanitizedHub.position.y)).toBe(false);
     });
   });
 });

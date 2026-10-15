@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DotExpanded } from './DotExpanded.jsx';
 import { HubExpanded } from './HubExpanded.jsx';
 import { useExpandTimer } from '../hooks/useExpandTimer.js';
 import { Layers } from 'lucide-react';
+import { HubSettingsSchema } from '../../shared/schema.js';
 
 export function Dot({ dotId }) {
   const [dot, setDot] = useState(null);
@@ -11,6 +12,7 @@ export function Dot({ dotId }) {
   const [isPinned, setIsPinned] = useState(false);
   const [urgency, setUrgency] = useState('normal'); // 'normal' | 'warning' | 'critical'
   const [undoNote, setUndoNote] = useState(null);
+  const undoTimerRef = useRef(null);
 
   // Compute effective settings (dot override takes precedence over global default)
   const effectiveColor = dot?.color || globalSettings?.defaultDotColor || '#3b82f6';
@@ -78,6 +80,11 @@ export function Dot({ dotId }) {
         }
       }) : () => {};
 
+      const unsubNoteDel = window.electronAPI.onNoteDeleted ? window.electronAPI.onNoteDeleted((deletedNoteId) => {
+        setNotes((prev) => prev.filter((n) => n.id !== deletedNoteId));
+        setUndoNote((cur) => (cur?.id === deletedNoteId ? null : cur));
+      }) : () => {};
+
       const unsubFocus = window.electronAPI.onFocusInput ? window.electronAPI.onFocusInput(() => {
         expand();
       }) : () => {};
@@ -92,6 +99,7 @@ export function Dot({ dotId }) {
         unsubDisplayMode();
         unsubDot();
         unsubNote();
+        unsubNoteDel();
         unsubFocus();
         unsubCollapseHub();
       };
@@ -125,23 +133,33 @@ export function Dot({ dotId }) {
     const toDelete = notes.find((n) => n.id === noteId);
     if (!toDelete) return;
 
-    // Undo buffer
+    // Immediately remove from UI
+    setNotes((prev) => prev.filter((n) => n.id !== noteId));
     setUndoNote(toDelete);
-    setTimeout(() => {
-      setUndoNote((cur) => (cur?.id === noteId ? null : cur));
+
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+    }
+    undoTimerRef.current = setTimeout(() => {
+      setUndoNote(null);
+      undoTimerRef.current = null;
     }, 3000);
 
     if (window.electronAPI) {
       await window.electronAPI.deleteNote(noteId);
-      setNotes((prev) => prev.filter((n) => n.id !== noteId));
     }
   };
 
   const handleUndo = async () => {
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
     if (undoNote && window.electronAPI) {
-      await window.electronAPI.saveNote(undoNote);
-      setNotes((prev) => [...prev, undoNote]);
+      const restored = undoNote;
       setUndoNote(null);
+      await window.electronAPI.saveNote(restored);
+      setNotes((prev) => [...prev, restored]);
     }
   };
 
@@ -154,14 +172,35 @@ export function Dot({ dotId }) {
 
   const handleResetDotSettings = async () => {
     if (window.electronAPI && dot) {
-      const resetDot = {
-        id: dot.id,
-        position: dot.position,
-        noteIds: dot.noteIds || [],
-        isPinned: dot.isPinned || false
-      };
-      await window.electronAPI.saveDot(resetDot);
-      setDot(resetDot);
+      if (dot.isHub || dot.id === 'hub-dot') {
+        const resetDot = {
+          ...dot,
+          isHub: true,
+          position: dot.position || { x: 50, y: 50 },
+          color: HubSettingsSchema.hubColor,
+          opacity: HubSettingsSchema.hubOpacity,
+          blurBackground: true,
+          blurRadius: 12,
+          expandTimerMs: 6000,
+          hubEdge: HubSettingsSchema.hubEdge,
+          hubColor: HubSettingsSchema.hubColor,
+          hubOpacity: HubSettingsSchema.hubOpacity,
+          hubBorderStyle: HubSettingsSchema.hubBorderStyle,
+          sortOrder: HubSettingsSchema.sortOrder,
+          showCompletedChecklists: HubSettingsSchema.showCompletedChecklists
+        };
+        await window.electronAPI.saveDot(resetDot);
+        setDot(resetDot);
+      } else {
+        const resetDot = {
+          id: dot.id,
+          position: dot.position || { x: 100, y: 100 },
+          noteIds: dot.noteIds || [],
+          isPinned: dot.isPinned || false
+        };
+        await window.electronAPI.saveDot(resetDot);
+        setDot(resetDot);
+      }
     }
   };
 

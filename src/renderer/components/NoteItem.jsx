@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Trash2, Calendar, ListCheck, AlignLeft } from 'lucide-react';
+import { Trash2, Calendar, ListCheck, AlignLeft, Bell } from 'lucide-react';
 import { Checklist } from './Checklist.jsx';
+import { ALERT_WINDOW_PRESETS } from '../../shared/schema.js';
 
 export function NoteItem({ note, onUpdate, onDelete }) {
   const [mode, setMode] = useState(note.mode || 'text');
@@ -10,6 +11,7 @@ export function NoteItem({ note, onUpdate, onDelete }) {
   const textRef = React.useRef(text);
   const debounceTimerRef = React.useRef(null);
   const onUpdateRef = React.useRef(onUpdate);
+  const isDeletingRef = React.useRef(false);
 
   React.useEffect(() => {
     noteRef.current = note;
@@ -20,9 +22,11 @@ export function NoteItem({ note, onUpdate, onDelete }) {
   React.useEffect(() => {
     setText(note.text || '');
     textRef.current = note.text || '';
+    isDeletingRef.current = false;
   }, [note.id, note.text]);
 
   const flushSave = React.useCallback(() => {
+    if (isDeletingRef.current) return;
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -37,11 +41,14 @@ export function NoteItem({ note, onUpdate, onDelete }) {
     window.addEventListener('beforeunload', flushSave);
     return () => {
       window.removeEventListener('beforeunload', flushSave);
-      flushSave();
+      if (!isDeletingRef.current) {
+        flushSave();
+      }
     };
   }, [flushSave]);
 
   const handleTextChange = (e) => {
+    if (isDeletingRef.current) return;
     const newText = e.target.value;
     setText(newText);
     textRef.current = newText;
@@ -51,26 +58,66 @@ export function NoteItem({ note, onUpdate, onDelete }) {
     }
     debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null;
-      if (textRef.current !== noteRef.current.text) {
+      if (!isDeletingRef.current && textRef.current !== noteRef.current.text) {
         onUpdateRef.current({ ...noteRef.current, text: textRef.current });
       }
     }, 350);
   };
 
   const handleBlur = () => {
-    flushSave();
+    if (!isDeletingRef.current) {
+      flushSave();
+    }
   };
 
   const handleChecklistChange = (checklist) => {
+    if (isDeletingRef.current) return;
     flushSave();
     onUpdate({ ...note, checklist });
   };
 
   const handleDeadlineChange = (e) => {
+    if (isDeletingRef.current) return;
     flushSave();
     const val = e.target.value;
     const epoch = val ? new Date(val).getTime() : null;
-    onUpdate({ ...note, deadline: epoch, firedReminders: [] });
+    const defaultAlerts = epoch && !note.alertWindowsMin ? [60, 0] : (note.alertWindowsMin || [60, 0]);
+    onUpdate({
+      ...note,
+      deadline: epoch,
+      alertWindowsMin: epoch ? defaultAlerts : undefined,
+      firedReminders: []
+    });
+  };
+
+  const currentAlertWindows = Array.isArray(note.alertWindowsMin)
+    ? note.alertWindowsMin
+    : [60, 0];
+
+  const handleToggleAlertWindow = (min) => {
+    if (isDeletingRef.current) return;
+    flushSave();
+    let nextWindows;
+    if (currentAlertWindows.includes(min)) {
+      nextWindows = currentAlertWindows.filter((w) => w !== min);
+    } else {
+      nextWindows = [...currentAlertWindows, min];
+    }
+    onUpdate({
+      ...note,
+      alertWindowsMin: nextWindows,
+      firedReminders: []
+    });
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    isDeletingRef.current = true;
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    onDelete(note.id);
   };
 
   const deadlineFormatted = note.deadline
@@ -113,11 +160,70 @@ export function NoteItem({ note, onUpdate, onDelete }) {
               padding: '2px 4px'
             }}
           />
-          <button className="icon-btn" onClick={() => onDelete(note.id)} title="Delete Note">
+          <button
+            className="icon-btn"
+            onMouseDown={() => {
+              isDeletingRef.current = true;
+              if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = null;
+              }
+            }}
+            onClick={handleDelete}
+            title="Delete Note"
+          >
             <Trash2 size={14} />
           </button>
         </div>
       </div>
+
+      {note.deadline && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '10px',
+            opacity: 0.9,
+            padding: '2px 0',
+            flexWrap: 'wrap'
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
+            <Bell size={10} /> Alert:
+          </span>
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+            {ALERT_WINDOW_PRESETS.map((preset) => {
+              const checked = currentAlertWindows.includes(preset.min);
+              return (
+                <label
+                  key={preset.min}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    background: checked ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.25)',
+                    padding: '1px 5px',
+                    borderRadius: '3px',
+                    border: checked ? '1px solid rgba(255,255,255,0.3)' : '1px solid transparent',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => handleToggleAlertWindow(preset.min)}
+                    style={{ width: '10px', height: '10px', margin: 0, cursor: 'pointer' }}
+                  />
+                  <span>{preset.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {mode === 'text' ? (

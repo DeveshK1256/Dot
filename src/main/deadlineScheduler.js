@@ -25,7 +25,7 @@ export class DeadlineScheduler {
 
   checkDeadlines() {
     const settings = this.storage.getSettings();
-    const reminderWindows = settings?.deadlineReminderWindowsMin || [1440, 60, 15, 0];
+    const globalReminderWindows = settings?.deadlineReminderWindowsMin || [1440, 60, 15, 0];
     const now = Date.now();
 
     const dots = this.storage.getDots();
@@ -35,6 +35,10 @@ export class DeadlineScheduler {
 
       for (const note of notes) {
         if (!note.deadline) continue;
+
+        const reminderWindows = Array.isArray(note.alertWindowsMin) && note.alertWindowsMin.length > 0
+          ? note.alertWindowsMin
+          : globalReminderWindows;
 
         const msLeft = note.deadline - now;
         const minsLeft = Math.floor(msLeft / 60000);

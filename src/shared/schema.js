@@ -59,6 +59,14 @@ export function validateDot(dot) {
   return true;
 }
 
+export const ALERT_WINDOW_PRESETS = [
+  { label: 'At deadline', min: 0 },
+  { label: '10 min', min: 10 },
+  { label: '30 min', min: 30 },
+  { label: '1 hour', min: 60 },
+  { label: '1 day', min: 1440 }
+];
+
 export function validateNote(note) {
   if (!note || typeof note !== 'object') throw new Error('Note must be an object');
   if (typeof note.id !== 'string' || !note.id) throw new Error('Invalid or missing note.id');
@@ -68,6 +76,9 @@ export function validateNote(note) {
   }
   if (note.deadline !== undefined && note.deadline !== null && typeof note.deadline !== 'number') {
     throw new Error('Deadline must be an epoch timestamp or null');
+  }
+  if (note.alertWindowsMin !== undefined && !Array.isArray(note.alertWindowsMin)) {
+    throw new Error('alertWindowsMin must be an array if provided');
   }
   return true;
 }
