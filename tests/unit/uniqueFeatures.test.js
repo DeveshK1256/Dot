@@ -23,6 +23,8 @@ vi.mock('electron', () => {
     show() { this.visible = true; }
     hide() { this.visible = false; }
     focus() {}
+    setAlwaysOnTop() {}
+    moveTop() {}
     isVisible() { return this.visible; }
     isDestroyed() { return this.destroyed; }
     getPosition() { return [this.bounds.x, this.bounds.y]; }
@@ -631,6 +633,53 @@ describe('Unique Features Unit Tests', () => {
       expect(sanitizedHub.position.y).toBeGreaterThanOrEqual(0);
       expect(isNaN(sanitizedHub.position.x)).toBe(false);
       expect(isNaN(sanitizedHub.position.y)).toBe(false);
+    });
+
+    it('spawns new dots clear of the plus button corner and avoids overlapping or instant clustering', () => {
+      const store = new MockStore();
+      const storage = new StorageEngine(store);
+      storage.saveSettings({ ...storage.getSettings(), plusButtonCorner: 'bottom-right' });
+
+      const wm = new WindowManager(storage);
+      wm.ensureHubDot();
+      const plusWin = wm.createPlusButtonWindow();
+      const moveTopSpy = vi.spyOn(plusWin, 'moveTop');
+
+      // Spawn 4 dots sequentially
+      const spawnedWins = [];
+      for (let i = 0; i < 4; i++) {
+        const win = wm.spawnDotFromPlusButton();
+        spawnedWins.push(win);
+      }
+
+      expect(spawnedWins.length).toBe(4);
+      expect(moveTopSpy).toHaveBeenCalledTimes(4);
+
+      // Verify each dot position is clear of the corner button area (workArea is 1920x1080, button at 1856, 1016)
+      const spawnedDots = storage.getDots().filter((d) => !d.isHub);
+      expect(spawnedDots.length).toBe(4);
+
+      for (const dot of spawnedDots) {
+        // Expanded card right edge = dot.position.x + 340. Must be < 1856 (leaving space before plus button)
+        expect(dot.position.x + 340).toBeLessThanOrEqual(1856);
+        // Expanded card bottom edge = dot.position.y + 260. Must be < 1016 (leaving space above plus button)
+        expect(dot.position.y + 260).toBeLessThanOrEqual(1016);
+      }
+
+      // Verify no two dots have >= 50% overlap (collapsed size 48x48)
+      for (let i = 0; i < spawnedDots.length; i++) {
+        for (let j = i + 1; j < spawnedDots.length; j++) {
+          const rectA = { x: spawnedDots[i].position.x, y: spawnedDots[i].position.y, width: 48, height: 48 };
+          const rectB = { x: spawnedDots[j].position.x, y: spawnedDots[j].position.y, width: 48, height: 48 };
+          const overlap = calculateOverlapPercentage(rectA, rectB);
+          expect(overlap).toBe(0);
+        }
+      }
+
+      // Verify clusters map does not cluster them
+      const candidateDots = spawnedDots.map((d) => ({ ...d }));
+      const detected = detectClusters(candidateDots, 48, 0.5);
+      expect(detected.length).toBe(0);
     });
   });
 });

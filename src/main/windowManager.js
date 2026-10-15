@@ -852,7 +852,13 @@ export class WindowManager {
     if (this.plusButtonWindow && !this.plusButtonWindow.isDestroyed()) {
       const pos = this.getCornerPosition(settings.plusButtonCorner);
       this.plusButtonWindow.setPosition(pos.x, pos.y);
+      if (typeof this.plusButtonWindow.setAlwaysOnTop === 'function') {
+        this.plusButtonWindow.setAlwaysOnTop(true, 'screen-saver');
+      }
       this.plusButtonWindow.show();
+      if (typeof this.plusButtonWindow.moveTop === 'function') {
+        this.plusButtonWindow.moveTop();
+      }
       return this.plusButtonWindow;
     }
 
@@ -876,6 +882,10 @@ export class WindowManager {
       }
     });
 
+    if (typeof this.plusButtonWindow.setAlwaysOnTop === 'function') {
+      this.plusButtonWindow.setAlwaysOnTop(true, 'screen-saver');
+    }
+
     const devUrl = 'http://localhost:5173';
     safeLoadWindow(this.plusButtonWindow, `${devUrl}?view=plus-button`, { view: 'plus-button' });
 
@@ -897,7 +907,13 @@ export class WindowManager {
       } else {
         const pos = this.getCornerPosition(settings.plusButtonCorner);
         this.plusButtonWindow.setPosition(pos.x, pos.y);
+        if (typeof this.plusButtonWindow.setAlwaysOnTop === 'function') {
+          this.plusButtonWindow.setAlwaysOnTop(true, 'screen-saver');
+        }
         this.plusButtonWindow.show();
+        if (typeof this.plusButtonWindow.moveTop === 'function') {
+          this.plusButtonWindow.moveTop();
+        }
       }
     }
   }
@@ -927,9 +943,9 @@ export class WindowManager {
   }
 
   spawnNewDot(position, expandImmediately = false) {
-    const id = `dot-${Date.now()}`;
+    const id = `dot-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const settings = this.storage.getSettings();
-    const noteId = `note-${Date.now()}`;
+    const noteId = `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
     const initialNote = {
       id: noteId,
@@ -980,28 +996,85 @@ export class WindowManager {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workArea;
 
-    // Calculate initial target based on corner, offset towards screen center
-    let baseX = width - 360;
-    let baseY = height - 280;
+    // Position initial base clearly away from the 44x44 corner button
+    // (Card is 340w x 260h; keeping 80px margin leaves at least 16px clear of the 44px button at 20px margin)
+    let baseX = width - 420;
+    let baseY = height - 340;
 
     if (corner === 'bottom-left') {
-      baseX = 60;
-      baseY = height - 280;
+      baseX = 80;
+      baseY = height - 340;
     } else if (corner === 'top-right') {
-      baseX = width - 360;
-      baseY = 60;
+      baseX = width - 420;
+      baseY = 80;
     } else if (corner === 'top-left') {
-      baseX = 60;
-      baseY = 60;
+      baseX = 80;
+      baseY = 80;
     }
 
-    // Cascade slightly from existing dots
-    const dots = this.storage.getDots();
-    const cascadeOffset = (dots.length % 5) * 24;
-    const x = Math.max(20, Math.min(width - 340, baseX - cascadeOffset));
-    const y = Math.max(20, Math.min(height - 260, baseY - cascadeOffset));
+    const dots = this.storage.getDots().filter((d) => !d.isHub && d.id !== this.hubDotId);
 
-    return this.spawnNewDot({ x, y }, true);
+    // Find an unoccupied spawn position that doesn't overlap existing dots (>48px)
+    // and doesn't collide with the corner plus button
+    let step = 0;
+    let chosenX = baseX;
+    let chosenY = baseY;
+    const maxSteps = 50;
+
+    while (step < maxSteps) {
+      const diagIndex = step % 6;
+      const laneIndex = Math.floor(step / 6);
+
+      // Offset along diagonal (60px step) and parallel lane (140px step)
+      const offsetX = diagIndex * 60 + laneIndex * 140;
+      const offsetY = diagIndex * 60;
+
+      let candX, candY;
+      if (corner === 'bottom-right') {
+        candX = baseX - offsetX;
+        candY = baseY - offsetY;
+      } else if (corner === 'bottom-left') {
+        candX = baseX + offsetX;
+        candY = baseY - offsetY;
+      } else if (corner === 'top-right') {
+        candX = baseX - offsetX;
+        candY = baseY + offsetY;
+      } else {
+        // 'top-left'
+        candX = baseX + offsetX;
+        candY = baseY + offsetY;
+      }
+
+      // Keep within comfortable screen workArea bounds
+      if (candX < 20 || candX > width - 360 || candY < 20 || candY > height - 280) {
+        step++;
+        continue;
+      }
+
+      // Check collision with any existing dot (within 52px ensures 0% overlap when collapsed)
+      const collides = dots.some((d) => {
+        if (!d.position) return false;
+        return Math.abs(d.position.x - candX) < 52 && Math.abs(d.position.y - candY) < 52;
+      });
+
+      if (!collides) {
+        chosenX = candX;
+        chosenY = candY;
+        break;
+      }
+
+      step++;
+    }
+
+    const win = this.spawnNewDot({ x: chosenX, y: chosenY }, true);
+
+    if (this.plusButtonWindow && !this.plusButtonWindow.isDestroyed()) {
+      if (typeof this.plusButtonWindow.moveTop === 'function') {
+        this.plusButtonWindow.moveTop();
+      }
+    }
+
+    return win;
   }
 
   spawnDotAtCursor() {

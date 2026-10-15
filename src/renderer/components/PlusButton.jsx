@@ -2,7 +2,11 @@ import React from 'react';
 import { Plus } from 'lucide-react';
 
 export function PlusButton() {
-  const handleClick = () => {
+  const handleClick = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (window.electronAPI) {
       window.electronAPI.spawnDotFromPlusButton();
     }
@@ -10,6 +14,7 @@ export function PlusButton() {
 
   return (
     <div
+      onClick={handleClick}
       style={{
         width: '100vw',
         height: '100vh',
@@ -17,7 +22,9 @@ export function PlusButton() {
         alignItems: 'center',
         justifyContent: 'center',
         background: 'transparent',
-        userSelect: 'none'
+        userSelect: 'none',
+        cursor: 'pointer',
+        WebkitAppRegion: 'no-drag'
       }}
     >
       <button
@@ -35,8 +42,9 @@ export function PlusButton() {
           justifyContent: 'center',
           cursor: 'pointer',
           boxShadow: '0 4px 14px rgba(0, 0, 0, 0.45)',
-          transition: 'transform 0.15s ease, background-color 0.15s ease',
-          outline: 'none'
+          transition: 'transform 0.1s ease, background-color 0.15s ease',
+          outline: 'none',
+          WebkitAppRegion: 'no-drag'
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = 'scale(1.1)';
@@ -45,6 +53,12 @@ export function PlusButton() {
         onMouseLeave={(e) => {
           e.currentTarget.style.transform = 'scale(1.0)';
           e.currentTarget.style.backgroundColor = '#3b82f6';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.transform = 'scale(1.1)';
         }}
       >
         <Plus size={20} strokeWidth={2.5} />

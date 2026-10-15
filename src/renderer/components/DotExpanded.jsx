@@ -19,7 +19,7 @@ export function DotExpanded({ dot, notes, globalSettings, isPinned, onTogglePin,
   };
 
   const activeNote = notes[0] || {
-    id: `note-${Date.now()}`,
+    id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     dotId: dot.id,
     text: '',
     checklist: [],
