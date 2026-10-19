@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Hub state & window bounds
   setDotState: (dotId, state) => ipcRenderer.send('set-dot-state', { dotId, state }),
   openNewNote: () => ipcRenderer.send('open-new-note'),
+  closeSettings: () => ipcRenderer.send('close-settings'),
   
   // Storage operations
   getSettings: () => ipcRenderer.invoke('storage:getSettings'),

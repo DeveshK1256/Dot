@@ -80,6 +80,14 @@ if (!gotTheLock) {
       }
     });
 
+    ipcMain.on('close-settings', () => {
+      try {
+        windowManager.closeSettingsWindow();
+      } catch (err) {
+        console.error('[IPC ERROR close-settings]:', err);
+      }
+    });
+
     ipcMain.handle('storage:getSettings', () => {
       try {
         return storage.getSettings();

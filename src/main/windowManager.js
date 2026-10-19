@@ -308,12 +308,18 @@ export class WindowManager {
       return this.settingsWindow;
     }
 
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { height: workH } = primaryDisplay.workArea;
+    const windowHeight = Math.min(640, Math.max(480, workH - 60));
+
     this.settingsWindow = new BrowserWindow({
-      width: 420,
-      height: 480,
+      width: 440,
+      height: windowHeight,
       frame: false,
       transparent: true,
-      resizable: false,
+      resizable: true,
+      minWidth: 380,
+      minHeight: 420,
       alwaysOnTop: true,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
@@ -331,6 +337,13 @@ export class WindowManager {
     });
 
     return this.settingsWindow;
+  }
+
+  closeSettingsWindow() {
+    if (this.settingsWindow && !this.settingsWindow.isDestroyed()) {
+      this.settingsWindow.close();
+      this.settingsWindow = null;
+    }
   }
 
   broadcast(channel, data) {

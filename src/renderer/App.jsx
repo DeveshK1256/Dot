@@ -9,8 +9,25 @@ export function App() {
 
   if (view === 'settings') {
     return (
-      <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#09090b' }}>
-        <SettingsPanel onClose={() => window.close()} />
+      <div
+        style={{
+          width: '100vw',
+          height: '100vh',
+          display: 'flex',
+          background: 'transparent',
+          boxSizing: 'border-box',
+          overflow: 'hidden'
+        }}
+      >
+        <SettingsPanel
+          onClose={() => {
+            if (window.electronAPI?.closeSettings) {
+              window.electronAPI.closeSettings();
+            } else {
+              window.close();
+            }
+          }}
+        />
       </div>
     );
   }
